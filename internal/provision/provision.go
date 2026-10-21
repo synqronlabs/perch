@@ -83,7 +83,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		opts.Storage.Mode = config.StorageSQLite
 	}
 	if opts.Storage.Mode == config.StorageS3 && opts.Storage.S3.KeyTemplate == "" {
-		opts.Storage.S3.KeyTemplate = "perch/{{.recipient.local}}/{{.recipient.domain}}/{{.task.id}}.eml"
+		opts.Storage.S3.KeyTemplate = "perch/{{.mailbox.address}}/{{.task.id}}.eml"
 	}
 	if opts.Storage.Mode == config.StorageS3 && opts.Storage.S3.SpoolMaxBytes == 0 {
 		opts.Storage.S3.SpoolMaxBytes = 256 << 20

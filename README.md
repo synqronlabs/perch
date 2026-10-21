@@ -157,10 +157,11 @@ The reject policies create mxRaven MTA rules using `authentication.*` and
 ### S3 mode
 
 In S3 mode, mxRaven writes the raw `.eml` with the `S3_STORE` action. The object
-key template must identify the recipient and include `{{.task.id}}`; the wizard writes:
+key template must be bucket-relative, identify the recipient with `{{.mailbox.*}}`,
+include `{{.task.id}}`, and end in `.eml`; the wizard writes:
 
 ```text
-perch/{{.recipient.local}}/{{.recipient.domain}}/{{.task.id}}.eml
+perch/{{.mailbox.address}}/{{.task.id}}.eml
 ```
 
 Perch needs `s3:GetObject`, `s3:HeadObject`, and `s3:ListBucket`. The mxRaven
@@ -217,7 +218,7 @@ storage:
     access_key: ""
     secret_key_env: PERCH_S3_SECRET_KEY
     force_path_style: false
-    key_template: "perch/{{.recipient.local}}/{{.recipient.domain}}/{{.task.id}}.eml"
+    key_template: "perch/{{.mailbox.address}}/{{.task.id}}.eml"
     reconcile_every: 5m
     spool: false
     spool_max_bytes: 268435456

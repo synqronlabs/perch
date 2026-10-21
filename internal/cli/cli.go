@@ -382,7 +382,7 @@ func runSetup(args []string) error {
 	s3Access := fs.String("s3-access-key", os.Getenv("PERCH_S3_ACCESS_KEY"), "S3 access key")
 	s3Secret := fs.String("s3-secret-key", os.Getenv("PERCH_S3_SECRET_KEY"), "S3 secret key")
 	s3PathStyle := fs.Bool("s3-path-style", false, "use path-style S3 addressing")
-	s3KeyTemplate := fs.String("s3-key-template", "", "S3 object key template (defaults to prefix + recipient variables)")
+	s3KeyTemplate := fs.String("s3-key-template", "", "S3 object key template (defaults to prefix + mailbox.address)")
 	tlsCert := fs.String("tls-cert", "", "TLS certificate file")
 	tlsKey := fs.String("tls-key", "", "TLS private key file")
 	acmeEmail := fs.String("acme-email", "", "Let's Encrypt account email")
@@ -488,7 +488,7 @@ func runSetup(args []string) error {
 		}
 		keyTemplate := *s3KeyTemplate
 		if keyTemplate == "" {
-			keyTemplate = prefix + "{{.recipient.local}}/{{.recipient.domain}}/{{.task.id}}.eml"
+			keyTemplate = prefix + "{{.mailbox.address}}/{{.task.id}}.eml"
 		}
 		cfg.Storage.S3 = config.S3Config{
 			Endpoint: *s3Endpoint, Region: *s3Region, Bucket: *s3Bucket,
