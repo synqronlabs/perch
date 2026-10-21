@@ -100,19 +100,19 @@ func TestHandleAccepted(t *testing.T) {
 }
 
 func TestMailboxAddressFromKey(t *testing.T) {
-	template := "perch/{{.recipient.local}}/{{.recipient.domain}}/{{.task.id}}.eml"
-	got, err := mailboxAddressFromKey(template, "perch/User/Example.com/abc-123.eml")
+	template := "perch/{{.mailbox.address}}/{{.task.id}}.eml"
+	got, err := mailboxAddressFromKey(template, "perch/User@Example.com/abc-123.eml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != "user@example.com" {
 		t.Fatalf("address = %q", got)
 	}
-	if _, err := mailboxAddressFromKey(template, "wrong/user/example.com/abc.eml"); err == nil {
+	if _, err := mailboxAddressFromKey(template, "wrong/User@Example.com/abc.eml"); err == nil {
 		t.Fatal("mismatched key was accepted")
 	}
-	legacy := "perch/{{.mailbox.address}}/{{.task.id}}.eml"
-	got, err = mailboxAddressFromKey(legacy, "perch/User@Example.com/abc-123.eml")
+	legacy := "perch/{{.recipient.local}}/{{.recipient.domain}}/{{.task.id}}.eml"
+	got, err = mailboxAddressFromKey(legacy, "perch/User/Example.com/abc-123.eml")
 	if err != nil || got != "user@example.com" {
 		t.Fatalf("legacy address = %q, err = %v", got, err)
 	}

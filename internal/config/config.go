@@ -344,6 +344,5 @@ func validS3KeyTemplate(template string) bool {
 		return false
 	}
 	return strings.Contains(template, "{{.mailbox.address}}") ||
-		(strings.Contains(template, "{{.recipient.local}}") && strings.Contains(template, "{{.recipient.domain}}")) ||
 		(strings.Contains(template, "{{.mailbox.local_part}}") && strings.Contains(template, "{{.mailbox.domain}}"))
 }
