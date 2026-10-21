@@ -140,7 +140,7 @@ func (s *session) Data(headers server.MessageHeaders, body io.Reader) error {
 		s.closeUpstream()
 		return server.ErrSenderDenied
 	}
-	reader := io.MultiReader(bytes.NewReader(headers), bytes.NewReader([]byte("\r\n")), body)
+	reader := &countingReader{reader: io.MultiReader(bytes.NewReader(headers), bytes.NewReader([]byte("\r\n")), body)}
 	resp, err := s.upstream.StreamData(reader)
 	if err != nil {
 		s.closeUpstream()
@@ -160,8 +160,19 @@ func (s *session) Data(headers server.MessageHeaders, body io.Reader) error {
 	} else {
 		s.response = "accepted"
 	}
+	parsedHeaders := ravenmail.ParseHeaders(headers)
+	subject := parsedHeaders.Get("Subject")
+	if ref != "" {
+		if err := s.srv.store.UpsertOutboundAccepted(context.Background(), store.Outbound{
+			AccountID: s.account.ID, MessageRef: ref, FromAddress: s.from,
+			Recipients: append([]string(nil), s.rcpts...), Subject: subject,
+			Size: reader.n, Status: "accepted", AcceptedAt: time.Now().UTC(),
+		}); err != nil {
+			s.srv.log.Warn("persist outbound acceptance", "message_ref", ref, "error", err)
+		}
+	}
 	s.srv.log.Info("submission relayed", "account", s.account.PrimaryAddress,
-		"from", s.from, "recipients", s.rcpts, "message_ref", ref,
+		"from", s.from, "recipients", s.rcpts, "message_ref", ref, "bytes", reader.n,
 		"remote", remoteAddr(s.conn))
 	s.from = ""
 	s.rcpts = nil
@@ -361,6 +372,17 @@ func messageRef(response string) string {
 		value = value[:end]
 	}
 	return value
+}
+
+type countingReader struct {
+	reader io.Reader
+	n      int64
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	r.n += int64(n)
+	return n, err
 }
 
 func stripGeneratedReceived(headers []byte) []byte {

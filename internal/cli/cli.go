@@ -4,6 +4,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -25,6 +27,7 @@ import (
 	"github.com/synqronlabs/perch/internal/hub"
 	"github.com/synqronlabs/perch/internal/imapd"
 	"github.com/synqronlabs/perch/internal/ingest"
+	"github.com/synqronlabs/perch/internal/netlimit"
 	"github.com/synqronlabs/perch/internal/password"
 	"github.com/synqronlabs/perch/internal/provision"
 	"github.com/synqronlabs/perch/internal/smtpd"
@@ -61,6 +64,12 @@ func Run(args []string) int {
 		err = runDoctor(args[1:])
 	case "backup":
 		err = runBackup(args[1:])
+	case "reconcile":
+		err = runReconcile(args[1:])
+	case "gc":
+		err = runGC(args[1:])
+	case "outbound":
+		err = runOutbound(args[1:])
 	case "version", "--version", "-version":
 		fmt.Println("perch", Version)
 		return 0
@@ -91,6 +100,9 @@ Usage:
   perch mailbox    list mailboxes for an account
   perch doctor     check the database, TLS, S3, and mxRaven connectivity
   perch backup     write a consistent SQLite backup
+  perch reconcile  force one S3 bucket reconciliation pass
+  perch gc         remove orphan blobs, old dead letters, and S3 tombstones
+  perch outbound   list submitted messages and delivery status
   perch version    print the version
 
 Run "perch <command> -h" for command flags.
@@ -124,6 +136,7 @@ func runServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	var wg sync.WaitGroup
 	var s3 *blob.S3
 	if cfg.Storage.Mode == config.StorageS3 {
 		s3, err = blob.NewS3(ctx, cfg.Storage.S3)
@@ -131,16 +144,38 @@ func runServe(args []string) error {
 			return err
 		}
 	}
-	tlsConfig, acmeManager, err := tlsutil.Load(cfg.TLS, cfg.DataDir)
+	connLimiter := netlimit.New(cfg.Limits.MaxConnections)
+	defer connLimiter.Close()
+	tlsConfig, acmeManager, tlsReloader, err := tlsutil.Load(cfg.TLS, cfg.DataDir)
 	if err != nil {
 		return err
+	}
+	if tlsReloader != nil {
+		hup := make(chan os.Signal, 1)
+		signal.Notify(hup, syscall.SIGHUP)
+		defer signal.Stop(hup)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-hup:
+					if err := tlsReloader.Reload(); err != nil {
+						log.Warn("TLS certificate reload failed", "error", err)
+					} else {
+						log.Info("TLS certificate reloaded")
+					}
+				}
+			}
+		}()
 	}
 	h := hub.New()
 	ingester := ingest.New(cfg, st, s3, h, log)
 	imapBackend := imapd.New(cfg, st, h, s3, log)
 
 	var (
-		wg     sync.WaitGroup
 		mu     sync.Mutex
 		imaps  []*imapserver.Server
 		runErr error
@@ -176,7 +211,7 @@ func runServe(args []string) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := smtpd.New(cfg, st, log).Run(ctx, tlsConfig); err != nil && !errors.Is(err, context.Canceled) {
+		if err := smtpd.New(cfg, st, log, connLimiter).Run(ctx, tlsConfig); err != nil && !errors.Is(err, context.Canceled) {
 			fail(fmt.Errorf("submission server: %w", err))
 		}
 	}()
@@ -186,13 +221,18 @@ func runServe(args []string) error {
 		if tlsConfig == nil && !insecure {
 			return fmt.Errorf("IMAP listener %s requires TLS or a loopback bind", cfg.IMAP.Addr)
 		}
+		ln, err := net.Listen("tcp", cfg.IMAP.Addr)
+		if err != nil {
+			return fmt.Errorf("listen on IMAP address %s: %w", cfg.IMAP.Addr, err)
+		}
+		ln = connLimiter.Wrap(ln)
 		srv := imapserver.New(imapBackend.Options(tlsConfig, insecure))
 		imaps = append(imaps, srv)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			log.Info("IMAP listener", "addr", cfg.IMAP.Addr, "starttls", tlsConfig != nil)
-			if err := srv.ListenAndServe(cfg.IMAP.Addr); err != nil && ctx.Err() == nil {
+			if err := srv.Serve(ln); err != nil && ctx.Err() == nil {
 				fail(fmt.Errorf("IMAP listener: %w", err))
 			}
 		}()
@@ -201,19 +241,25 @@ func runServe(args []string) error {
 		if tlsConfig == nil {
 			return fmt.Errorf("IMAPS listener %s requires tls.cert_file and tls.key_file", cfg.IMAP.IMAPSAddr)
 		}
+		ln, err := net.Listen("tcp", cfg.IMAP.IMAPSAddr)
+		if err != nil {
+			return fmt.Errorf("listen on IMAPS address %s: %w", cfg.IMAP.IMAPSAddr, err)
+		}
+		ln = tls.NewListener(connLimiter.Wrap(ln), tlsConfig)
 		srv := imapserver.New(imapBackend.Options(tlsConfig, false))
 		imaps = append(imaps, srv)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			log.Info("IMAPS listener", "addr", cfg.IMAP.IMAPSAddr)
-			if err := srv.ListenAndServeTLS(cfg.IMAP.IMAPSAddr); err != nil && ctx.Err() == nil {
+			if err := srv.Serve(ln); err != nil && ctx.Err() == nil {
 				fail(fmt.Errorf("IMAPS listener: %w", err))
 			}
 		}()
 	}
 
 	<-ctx.Done()
+	connLimiter.Close()
 	for _, srv := range imaps {
 		_ = srv.Close()
 	}
@@ -314,8 +360,20 @@ func runSetup(args []string) error {
 	inboundDomain := fs.String("inbound-domain", "", "inbound domain (defaults to --domain)")
 	sendingDomain := fs.String("sending-domain", "", "sending domain (defaults to --domain)")
 	noSubmission := fs.Bool("no-submission", false, "do not create a submission listener")
+	authPolicy := fs.String("auth-policy", "none", "MTA auth policy: none, reject-dmarc-fail, reject-spf-fail, reject-unauthenticated")
+	rspamd := fs.Bool("rspamd", true, "enable Rspamd scanning on the MTA listener")
+	rejectMalware := fs.Bool("reject-malware", true, "reject messages with malware verdicts")
+	rejectHighConfidenceSpam := fs.Bool("reject-high-confidence-spam", false, "reject messages with spam score >= 10")
+	mtaMessageRate := fs.Float64("mta-message-rate", 0, "MTA messages per minute (0 leaves default)")
+	mtaRecipientRate := fs.Float64("mta-recipient-rate", 0, "MTA recipients per minute")
+	mtaTaskRate := fs.Float64("mta-task-rate", 0, "MTA tasks per minute")
+	mtaBurst := fs.Int("mta-burst", 0, "MTA rate-limit burst")
+	mtaConcurrency := fs.Int("mta-concurrency", 0, "MTA max concurrency")
 	dryRun := fs.Bool("dry-run", false, "print planned operations without calling mxRaven")
 	force := fs.Bool("force", false, "overwrite an existing configuration")
+	waitDNS := fs.Bool("wait", false, "wait for mxRaven DNS verification after setup")
+	waitTimeout := fs.Duration("wait-timeout", 10*time.Minute, "DNS verification timeout")
+	waitInterval := fs.Duration("wait-interval", 15*time.Second, "DNS verification poll interval")
 	storage := fs.String("storage", "sqlite", "storage mode: sqlite or s3")
 	s3Endpoint := fs.String("s3-endpoint", "", "S3 endpoint URL")
 	s3Region := fs.String("s3-region", "", "S3 region")
@@ -324,6 +382,7 @@ func runSetup(args []string) error {
 	s3Access := fs.String("s3-access-key", os.Getenv("PERCH_S3_ACCESS_KEY"), "S3 access key")
 	s3Secret := fs.String("s3-secret-key", os.Getenv("PERCH_S3_SECRET_KEY"), "S3 secret key")
 	s3PathStyle := fs.Bool("s3-path-style", false, "use path-style S3 addressing")
+	s3KeyTemplate := fs.String("s3-key-template", "", "S3 object key template (defaults to prefix + recipient variables)")
 	tlsCert := fs.String("tls-cert", "", "TLS certificate file")
 	tlsKey := fs.String("tls-key", "", "TLS private key file")
 	acmeEmail := fs.String("acme-email", "", "Let's Encrypt account email")
@@ -334,6 +393,18 @@ func runSetup(args []string) error {
 	}
 	if *domain == "" || *workspace == "" {
 		return errors.New("--domain and --workspace are required")
+	}
+	switch strings.ToLower(*authPolicy) {
+	case "", "none", "reject-dmarc-fail", "reject-spf-fail", "reject-unauthenticated":
+	default:
+		return fmt.Errorf("unknown --auth-policy %q", *authPolicy)
+	}
+	if *mtaMessageRate < 0 || *mtaRecipientRate < 0 || *mtaTaskRate < 0 || *mtaBurst < 0 || *mtaConcurrency < 0 {
+		return errors.New("MTA rate-limit values must not be negative")
+	}
+	if (*mtaMessageRate > 0 || *mtaRecipientRate > 0 || *mtaTaskRate > 0 || *mtaBurst > 0 || *mtaConcurrency > 0) &&
+		(*mtaMessageRate <= 0 || *mtaRecipientRate <= 0 || *mtaTaskRate <= 0) {
+		return errors.New("--mta-message-rate, --mta-recipient-rate, and --mta-task-rate must all be set together")
 	}
 	if *token == "" {
 		return errors.New("--token or MXRAVEN_API_TOKEN is required")
@@ -392,6 +463,9 @@ func runSetup(args []string) error {
 		cfg.SMTP.TLSAddr = ":465"
 	}
 	cfg.Storage.Mode = config.StorageMode(strings.ToLower(*storage))
+	if cfg.Storage.Mode != config.StorageSQLite && cfg.Storage.Mode != config.StorageS3 {
+		return fmt.Errorf("unknown --storage %q", *storage)
+	}
 	var err error
 	if cfg.Storage.Mode == config.StorageS3 {
 		if *s3Bucket == "" {
@@ -412,12 +486,34 @@ func runSetup(args []string) error {
 		if prefix != "" {
 			prefix += "/"
 		}
+		keyTemplate := *s3KeyTemplate
+		if keyTemplate == "" {
+			keyTemplate = prefix + "{{.recipient.local}}/{{.recipient.domain}}/{{.task.id}}.eml"
+		}
 		cfg.Storage.S3 = config.S3Config{
 			Endpoint: *s3Endpoint, Region: *s3Region, Bucket: *s3Bucket,
 			Prefix: prefix, AccessKey: *s3Access, SecretKey: *s3Secret,
 			ForcePathStyle: *s3PathStyle,
-			KeyTemplate:    prefix + "{{.recipient.local}}/{{.recipient.domain}}/{{.task.id}}.eml",
-			ReconcileEvery: 5 * time.Minute, Spool: true,
+			KeyTemplate:    keyTemplate,
+			ReconcileEvery: 5 * time.Minute, Spool: false, SpoolMaxBytes: 256 << 20,
+		}
+	}
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	var rateLimit *provision.RateLimit
+	if *mtaMessageRate > 0 || *mtaRecipientRate > 0 || *mtaTaskRate > 0 || *mtaBurst > 0 || *mtaConcurrency > 0 {
+		burst := int32(*mtaBurst)
+		if burst == 0 {
+			burst = 10
+		}
+		concurrency := int32(*mtaConcurrency)
+		if concurrency == 0 {
+			concurrency = 5
+		}
+		rateLimit = &provision.RateLimit{
+			MessageRatePerMinute: *mtaMessageRate, RecipientRatePerMinute: *mtaRecipientRate,
+			TaskRatePerMinute: *mtaTaskRate, Burst: burst, MaxConcurrency: concurrency,
 		}
 	}
 	result, err := provision.Run(context.Background(), provision.Options{
@@ -425,6 +521,9 @@ func runSetup(args []string) error {
 		DataDir: dir, Domain: *domain, InboundDomain: *inboundDomain,
 		SendingDomain: *sendingDomain, EnableSubmission: !*noSubmission,
 		Storage: cfg.Storage, DryRun: *dryRun,
+		AuthPolicy: *authPolicy, Rspamd: *rspamd,
+		RejectMalware: *rejectMalware, RejectHighConfidenceSpam: *rejectHighConfidenceSpam,
+		RateLimit: rateLimit,
 	})
 	if err != nil {
 		return err
@@ -455,6 +554,13 @@ func runSetup(args []string) error {
 		}
 		_ = w.Flush()
 		fmt.Println()
+	}
+	if *waitDNS {
+		if err := provision.WaitForDNS(context.Background(), *baseURL, *token, *workspace, result, *waitInterval, *waitTimeout, func(format string, args ...any) {
+			fmt.Printf(format+"\n", args...)
+		}); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("next: perch account add --config %s --email you@%s\n", path, *domain)
 	fmt.Printf("then: perch serve --config %s\n", path)
@@ -747,12 +853,29 @@ func runDoctor(args []string) error {
 		return err
 	}
 	fmt.Printf("accounts: %d; dead letters: %d\n", len(accounts), dead)
+	outbound, err := st.CountOutbound(ctx)
+	if err != nil {
+		return err
+	}
+	if len(outbound) > 0 {
+		parts := make([]string, 0, len(outbound))
+		for status, count := range outbound {
+			parts = append(parts, fmt.Sprintf("%s=%d", status, count))
+		}
+		sort.Strings(parts)
+		fmt.Printf("outbound: %s\n", strings.Join(parts, ", "))
+	}
+	fmt.Printf("limits: max_connections=%d ingest_concurrency=%d blob_cache=%d bytes\n",
+		cfg.Limits.MaxConnections, cfg.Limits.IngestConcurrency, cfg.Limits.BlobCacheBytes)
 	if cfg.TLS.CertFile != "" {
 		expiry, err := tlsutil.CertificateExpiry(cfg.TLS.CertFile)
 		if err != nil {
 			return err
 		}
 		fmt.Printf("TLS certificate expires: %s\n", expiry.Format(time.RFC3339))
+		if time.Until(expiry) < 30*24*time.Hour {
+			fmt.Println("warning: TLS certificate expires within 30 days")
+		}
 	} else if cfg.TLS.ACME.Enabled {
 		fmt.Println("TLS: ACME enabled")
 	} else {
@@ -767,21 +890,50 @@ func runDoctor(args []string) error {
 			return err
 		}
 		fmt.Printf("S3: ok (%s)\n", cfg.Storage.S3.Bucket)
+		objects, err := s3.List(ctx, "")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("S3 objects under %q: %d\n", cfg.Storage.S3.Prefix, len(objects))
+		spoolBytes, spoolCount, err := st.SpoolStats(ctx)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("S3 spool: %d objects, %d bytes (limit %d)\n", spoolCount, spoolBytes, cfg.Storage.S3.SpoolMaxBytes)
+	}
+	if domain := firstNonEmptyString(cfg.Setup.InboundDomain, cfg.Setup.Domain); domain != "" {
+		mx, err := net.LookupMX(domain)
+		if err != nil || len(mx) == 0 {
+			fmt.Printf("warning: no MX records found for %s\n", domain)
+		} else {
+			for _, record := range mx {
+				fmt.Printf("MX %s -> %s (%d)\n", domain, record.Host, record.Pref)
+			}
+		}
+		if txt, err := net.LookupTXT("_dmarc." + domain); err != nil || len(txt) == 0 {
+			fmt.Printf("warning: no DMARC TXT record found for %s\n", domain)
+		}
+		for _, name := range []string{"mxr1._domainkey." + domain, "mxr2._domainkey." + domain, "bounces." + domain} {
+			if _, err := net.LookupCNAME(name); err != nil {
+				fmt.Printf("warning: no CNAME found for %s\n", name)
+			}
+		}
 	}
 	for _, listener := range cfg.MXRaVen.Listeners {
-		if listener.Kind != "mta" {
-			continue
-		}
-		client, err := notify.New(
+		notifyOpts := []notify.Option{
 			notify.WithURL(cfg.MXRaVen.NotificationURL),
 			notify.WithCredentials(listener.KeyPrefix, listener.Secret()),
 			notify.WithListener(listener.ID),
-		)
+		}
+		if listener.Consumer != "" {
+			notifyOpts = append(notifyOpts, notify.WithConsumer(listener.Consumer))
+		}
+		client, err := notify.New(notifyOpts...)
 		if err != nil {
 			return fmt.Errorf("mxRaven notification listener %s: %w", listener.ID, err)
 		}
 		_ = client.Close()
-		fmt.Printf("mxRaven MTA listener %s: ok\n", listener.ID)
+		fmt.Printf("mxRaven %s listener %s: ok\n", listener.Kind, listener.ID)
 	}
 	if submission, ok := cfg.Listener("submission"); ok {
 		dialer := client.NewDialer(cfg.MXRaVen.SubmissionHost, cfg.MXRaVen.SubmissionPort)
@@ -890,4 +1042,171 @@ func isLoopback(addr string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+func runReconcile(args []string) error {
+	fs := flag.NewFlagSet("reconcile", flag.ContinueOnError)
+	configPath := fs.String("config", defaultConfigPath(), "configuration file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, st, err := openConfigStore(*configPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+	if cfg.Storage.Mode != config.StorageS3 {
+		return errors.New("reconcile requires storage.mode=s3")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	s3, err := blob.NewS3(ctx, cfg.Storage.S3)
+	if err != nil {
+		return err
+	}
+	ingester := ingest.New(cfg, st, s3, hub.New(), newLogger(cfg.Log))
+	if err := ingester.ReconcileOnce(ctx); err != nil {
+		return err
+	}
+	fmt.Println("S3 reconciliation complete")
+	return nil
+}
+
+func runGC(args []string) error {
+	fs := flag.NewFlagSet("gc", flag.ContinueOnError)
+	configPath := fs.String("config", defaultConfigPath(), "configuration file")
+	dryRun := fs.Bool("dry-run", false, "report what would be removed")
+	s3Delete := fs.Bool("s3-delete", false, "delete S3 objects for deleted messages")
+	deadLetterAge := fs.Duration("dead-letter-age", 30*24*time.Hour, "delete dead letters older than this")
+	vacuum := fs.Bool("vacuum", true, "run incremental vacuum after cleanup")
+	spool := fs.Bool("spool", true, "enforce storage.s3.spool_max_bytes")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, st, err := openConfigStore(*configPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	localCount, localBytes, err := st.GCLocalOrphans(ctx, *dryRun)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("local orphan blobs: %d (%d bytes)%s\n", localCount, localBytes, drySuffix(*dryRun))
+	if cfg.Storage.Mode == config.StorageS3 {
+		tombstones, err := st.S3Tombstones(ctx)
+		if err != nil {
+			return err
+		}
+		var s3Bytes int64
+		for _, blob := range tombstones {
+			s3Bytes += blob.Size
+		}
+		fmt.Printf("S3 tombstones: %d (%d bytes)%s\n", len(tombstones), s3Bytes, drySuffix(*dryRun))
+		if *s3Delete {
+			s3, err := blob.NewS3(ctx, cfg.Storage.S3)
+			if err != nil {
+				return err
+			}
+			for _, tombstone := range tombstones {
+				if *dryRun {
+					continue
+				}
+				if err := s3.Delete(ctx, tombstone.Ref); err != nil {
+					return err
+				}
+				if err := st.DeleteBlob(ctx, tombstone.ID); err != nil {
+					return err
+				}
+			}
+		}
+		if *spool {
+			if *dryRun {
+				spoolBytes, spoolCount, err := st.SpoolStats(ctx)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("spool: %d objects, %d bytes (limit %d) (dry run)\n", spoolCount, spoolBytes, cfg.Storage.S3.SpoolMaxBytes)
+			} else {
+				evicted, freed, err := st.EnforceSpoolLimit(ctx, cfg.Storage.S3.SpoolMaxBytes)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("spool evicted: %d (%d bytes)\n", evicted, freed)
+			}
+		}
+	}
+	if !*dryRun {
+		removed, err := st.PurgeDeadLetters(ctx, time.Now().Add(-*deadLetterAge))
+		if err != nil {
+			return err
+		}
+		fmt.Printf("dead letters removed: %d\n", removed)
+		if *vacuum {
+			if err := st.IncrementalVacuum(ctx); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func runOutbound(args []string) error {
+	if len(args) == 0 || args[0] != "list" {
+		return errors.New("usage: perch outbound list [--account you@example.com]")
+	}
+	fs := flag.NewFlagSet("outbound list", flag.ContinueOnError)
+	configPath := fs.String("config", defaultConfigPath(), "configuration file")
+	accountEmail := fs.String("account", "", "filter by account email")
+	limit := fs.Int("limit", 100, "maximum rows")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	_, st, err := openConfigStore(*configPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+	var accountID int64
+	if *accountEmail != "" {
+		account, err := st.AccountByAddress(context.Background(), *accountEmail)
+		if err != nil {
+			return err
+		}
+		accountID = account.ID
+	}
+	rows, err := st.ListOutbound(context.Background(), accountID, *limit)
+	if err != nil {
+		return err
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "CREATED\tSTATUS\tFROM\tSUBJECT\tMESSAGE_REF\tATTEMPT\tSMTP")
+	for _, row := range rows {
+		smtp := ""
+		if row.SMTPCode != 0 {
+			smtp = fmt.Sprintf("%d %s", row.SMTPCode, row.EnhancedStatus)
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
+			row.CreatedAt.Format(time.RFC3339), row.Status, row.FromAddress, row.Subject, row.MessageRef, row.Attempt, smtp)
+	}
+	return w.Flush()
+}
+
+func drySuffix(dry bool) string {
+	if dry {
+		return " (dry run)"
+	}
+	return ""
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

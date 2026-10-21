@@ -9,6 +9,7 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
+	mxfeedback "github.com/synqronlabs/mxraven-go/mail/feedback"
 	"github.com/synqronlabs/perch/internal/mailparse"
 	"github.com/synqronlabs/perch/internal/store"
 )
@@ -242,6 +243,14 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 		sel.keywords[msg.UID] = msg.Keywords
 	}
 	s.srv.hub.Notify(sel.mailbox.ID)
+	if flags.Op != imap.StoreFlagsDel {
+		disposition := feedbackDisposition(flags.Flags)
+		if disposition != "" {
+			for _, message := range updated {
+				s.srv.trainFeedback(context.Background(), disposition, message)
+			}
+		}
+	}
 	if flags.Silent {
 		return nil
 	}
@@ -377,6 +386,26 @@ func sortDescending(values []uint32) {
 		for j := i; j > 0 && values[j] > values[j-1]; j-- {
 			values[j], values[j-1] = values[j-1], values[j]
 		}
+	}
+}
+
+func feedbackDisposition(flags []imap.Flag) mxfeedback.Disposition {
+	var spam, ham bool
+	for _, flag := range flags {
+		switch strings.ToLower(string(flag)) {
+		case "$junk":
+			spam = true
+		case "$notjunk":
+			ham = true
+		}
+	}
+	switch {
+	case spam && !ham:
+		return mxfeedback.DispositionSpam
+	case ham && !spam:
+		return mxfeedback.DispositionHam
+	default:
+		return ""
 	}
 }
 

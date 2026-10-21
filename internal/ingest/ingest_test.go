@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/synqronlabs/mxraven-go/mail/notify"
 	"github.com/synqronlabs/mxraven-go/mail/webhook"
 	"github.com/synqronlabs/perch/internal/config"
 	"github.com/synqronlabs/perch/internal/hub"
@@ -114,5 +115,48 @@ func TestMailboxAddressFromKey(t *testing.T) {
 	got, err = mailboxAddressFromKey(legacy, "perch/User@Example.com/abc-123.eml")
 	if err != nil || got != "user@example.com" {
 		t.Fatalf("legacy address = %q, err = %v", got, err)
+	}
+}
+
+func TestSubmissionEvents(t *testing.T) {
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	st, err := store.Open(filepath.Join(cfg.DataDir, "perch.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	hash, err := password.Hash("secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, err := st.CreateAccount(context.Background(), "user@example.com", "User", hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingester := New(cfg, st, nil, hub.New(), nil)
+	err = ingester.handleSubmissionAccepted(context.Background(), &webhook.InboundEmail{
+		TaskID: "out-task-1", MessageRef: "out-ref-1",
+		AcceptedAtUTC: time.Now().Unix(),
+		Envelope:      webhook.Envelope{MailFrom: "user@example.com", RcptTo: []string{"dest@example.net"}},
+		Message:       webhook.MessageSummary{Subject: "Outbound test"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = ingester.handleSubmissionAttempt(context.Background(), &notify.AttemptEvent{
+		MessageRef: "out-ref-1", TaskID: "out-task-1", Status: webhook.StatusDelivered,
+		Attempt: 1, SMTPCode: 250, EnhancedStatusCode: "2.0.0", RemoteResponse: "ok",
+		OccurredAtUTC: time.Now().Unix(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := st.ListOutbound(context.Background(), account.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Status != "delivered" || rows[0].Subject != "Outbound test" {
+		t.Fatalf("outbound = %+v", rows)
 	}
 }

@@ -51,6 +51,13 @@ func (l *Limiter) Failure(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
+	if len(l.entries) > 10000 {
+		for candidate, e := range l.entries {
+			if now.Sub(e.first) > l.window {
+				delete(l.entries, candidate)
+			}
+		}
+	}
 	e, ok := l.entries[key]
 	if !ok || now.Sub(e.first) > l.window {
 		l.entries[key] = entry{failures: 1, first: now, last: now}

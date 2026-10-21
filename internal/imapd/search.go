@@ -11,10 +11,10 @@ import (
 )
 
 func (s *session) Poll(w *imapserver.UpdateWriter, allowExpunge bool) error {
-	sel, err := s.requireSelected()
-	if err != nil {
-		return err
+	if s.sel == nil {
+		return nil
 	}
+	sel := s.sel
 	states, err := s.srv.store.MailboxState(context.Background(), sel.mailbox.ID)
 	if err != nil {
 		return err

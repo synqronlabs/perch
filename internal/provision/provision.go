@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/synqronlabs/mxraven-go/admin"
@@ -25,25 +26,42 @@ type Record struct {
 
 // Options controls provisioning.
 type Options struct {
-	BaseURL          string
-	Token            string
-	Tenant           string
-	Hostname         string
-	DataDir          string
-	Domain           string
-	InboundDomain    string
-	SendingDomain    string
-	EnableSubmission bool
-	Storage          config.StorageConfig
-	DryRun           bool
+	BaseURL                  string
+	Token                    string
+	Tenant                   string
+	Hostname                 string
+	DataDir                  string
+	Domain                   string
+	InboundDomain            string
+	SendingDomain            string
+	EnableSubmission         bool
+	Storage                  config.StorageConfig
+	DryRun                   bool
+	AuthPolicy               string
+	Rspamd                   bool
+	RejectMalware            bool
+	RejectHighConfidenceSpam bool
+	RateLimit                *RateLimit
+}
+
+// RateLimit configures an MTA listener override. Zero fields are left at zero
+// in the request; callers normally set all fields.
+type RateLimit struct {
+	MessageRatePerMinute   float64
+	RecipientRatePerMinute float64
+	TaskRatePerMinute      float64
+	Burst                  int32
+	MaxConcurrency         int32
 }
 
 // Result is the generated configuration and the DNS records the user must
 // publish.
 type Result struct {
-	Config config.Config
-	DNS    []Record
-	Notes  []string
+	Config   config.Config
+	DNS      []Record
+	Notes    []string
+	DomainID uuid.UUID
+	RouteID  uuid.UUID
 }
 
 // Run creates or reuses the mxRaven resources. It never stores the
@@ -66,6 +84,9 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	}
 	if opts.Storage.Mode == config.StorageS3 && opts.Storage.S3.KeyTemplate == "" {
 		opts.Storage.S3.KeyTemplate = "perch/{{.recipient.local}}/{{.recipient.domain}}/{{.task.id}}.eml"
+	}
+	if opts.Storage.Mode == config.StorageS3 && opts.Storage.S3.SpoolMaxBytes == 0 {
+		opts.Storage.S3.SpoolMaxBytes = 256 << 20
 	}
 	cfg.DataDir = opts.DataDir
 	cfg.Hostname = opts.Hostname
@@ -107,6 +128,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	result.DomainID = sending.ID
 	result.DNS = append(result.DNS, records(sending.RequiredCustomerRecords)...)
 
 	mta, err := ensureMTA(ctx, ws)
@@ -114,6 +136,23 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		return nil, err
 	}
 	result.Config.Setup.MTAListenerID = mta.ID.String()
+	if _, err := ws.Listeners.SetRspamdScanning(ctx, mta.ID, opts.Rspamd); err != nil {
+		return nil, fmt.Errorf("configure Rspamd scanning: %w", err)
+	}
+	if opts.RateLimit != nil {
+		if _, err := ws.MTARateLimits.PutListenerOverride(ctx, mta.ID, api.MTARateLimitPolicy{
+			MessageRatePerMinute:   opts.RateLimit.MessageRatePerMinute,
+			RecipientRatePerMinute: opts.RateLimit.RecipientRatePerMinute,
+			TaskRatePerMinute:      opts.RateLimit.TaskRatePerMinute,
+			Burst:                  opts.RateLimit.Burst,
+			MaxConcurrency:         opts.RateLimit.MaxConcurrency,
+		}); err != nil {
+			return nil, fmt.Errorf("configure MTA rate limit: %w", err)
+		}
+	}
+	if err := ensureAuthRules(ctx, ws, mta.ID, opts); err != nil {
+		return nil, err
+	}
 	notification, err := ws.Listeners.SetNotifications(ctx, mta.ID, true)
 	if err != nil {
 		return nil, fmt.Errorf("enable MTA notifications: %w", err)
@@ -131,6 +170,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	result.RouteID = route.ID
 	result.DNS = append(result.DNS, records(route.RequiredCustomerRecords)...)
 
 	if opts.Storage.Mode == config.StorageS3 {
@@ -150,6 +190,10 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 			return nil, err
 		}
 		result.Config.Setup.SubListenerID = submission.ID.String()
+		subNotification, err := ws.Listeners.SetNotifications(ctx, submission.ID, true)
+		if err != nil {
+			return nil, fmt.Errorf("enable submission notifications: %w", err)
+		}
 		if _, err := ws.SendingDomainPolicies.Replace(ctx, submission.ID, api.ReplaceSendingDomainPolicyRequest{
 			Grants: []api.SendingDomainPolicyGrantRequest{{
 				DomainID: sending.ID, SubdomainScope: api.SendingDomainSubdomainScopeExact,
@@ -163,7 +207,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		}
 		result.Config.MXRaVen.Listeners = append(result.Config.MXRaVen.Listeners, config.ListenerConfig{
 			ID: submission.ID.String(), Kind: "submission",
-			KeyPrefix: subKey.Username, KeySecret: subKey.Secret,
+			KeyPrefix: subKey.Username, KeySecret: subKey.Secret, Consumer: subNotification.Consumer,
 		})
 	}
 
@@ -333,4 +377,133 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// WaitForDNS polls mxRaven until the sending domain and inbound route are
+// verified, or the timeout expires.
+func WaitForDNS(ctx context.Context, baseURL, token, tenant string, result *Result, interval, timeout time.Duration, logf func(string, ...any)) error {
+	if result == nil || result.DomainID == uuid.Nil {
+		return errors.New("provision: result has no domain to verify")
+	}
+	if interval <= 0 {
+		interval = 15 * time.Second
+	}
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	adminOpts := []admin.Option{admin.WithToken(token)}
+	if strings.TrimSpace(baseURL) != "" {
+		adminOpts = append(adminOpts, admin.WithBaseURL(baseURL))
+	}
+	client, err := admin.New(adminOpts...)
+	if err != nil {
+		return fmt.Errorf("create mxRaven admin client: %w", err)
+	}
+	ws := client.Workspace(tenant)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		domain, err := ws.Domains.Get(ctx, result.DomainID)
+		if err != nil {
+			return fmt.Errorf("check sending domain: %w", err)
+		}
+		domainOK := domain.Status == api.DomainStatusVerified
+		routeOK := result.RouteID == uuid.Nil
+		if !routeOK {
+			route, err := ws.InboundRoutes.Get(ctx, result.RouteID)
+			if err != nil {
+				return fmt.Errorf("check inbound route: %w", err)
+			}
+			routeOK = route.IsVerified
+			if route.VerificationStatus == api.InboundRouteVerificationStatusSuspended {
+				return errors.New("inbound route is suspended")
+			}
+		}
+		if domain.Status == api.DomainStatusSuspended {
+			return errors.New("sending domain is suspended")
+		}
+		if domainOK && routeOK {
+			logf("mxRaven DNS verification complete")
+			return nil
+		}
+		logf("waiting for mxRaven DNS verification (domain=%s route=%t)", domain.Status, routeOK)
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("wait for DNS verification: %w", ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func ensureAuthRules(ctx context.Context, ws *admin.Workspace, listenerID uuid.UUID, opts Options) error {
+	if opts.RejectMalware {
+		if err := ensureRejectRule(ctx, ws, listenerID, 1,
+			"verdicts.has_malware",
+			"550", "5.7.1", "Message contains malware"); err != nil {
+			return err
+		}
+	}
+	if opts.RejectHighConfidenceSpam {
+		if err := ensureRejectRule(ctx, ws, listenerID, 2,
+			"verdicts.is_spam && verdicts.score >= 10.0",
+			"550", "5.7.1", "Message rejected as high-confidence spam"); err != nil {
+			return err
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(opts.AuthPolicy)) {
+	case "", "none":
+		return nil
+	case "reject-dmarc-fail":
+		return ensureRejectRule(ctx, ws, listenerID, 3,
+			`authentication.dmarc.status == "fail"`,
+			"550", "5.7.1", "Message rejected by DMARC policy")
+	case "reject-spf-fail":
+		return ensureRejectRule(ctx, ws, listenerID, 3,
+			`authentication.spf.status == "fail"`,
+			"550", "5.7.1", "Message rejected by SPF policy")
+	case "reject-unauthenticated":
+		return ensureRejectRule(ctx, ws, listenerID, 3,
+			`authentication.dmarc.status != "pass"`,
+			"550", "5.7.1", "Message rejected: DMARC did not pass")
+	default:
+		return fmt.Errorf("unknown auth policy %q", opts.AuthPolicy)
+	}
+}
+
+func ensureRejectRule(ctx context.Context, ws *admin.Workspace, listenerID uuid.UUID, priority int32, expression, code, enhanced, message string) error {
+	for rule, err := range ws.RoutingRules.List(ctx, listenerID, admin.ListRoutingRulesOptions{ActionType: api.RoutingRuleActionKindREJECT}) {
+		if err != nil {
+			return fmt.Errorf("list reject rules: %w", err)
+		}
+		if rule.ExpressionText == expression {
+			return nil
+		}
+	}
+	statusCode := 0
+	if _, err := fmt.Sscanf(code, "%d", &statusCode); err != nil {
+		return err
+	}
+	_, err := ws.RoutingRules.Create(ctx, listenerID, api.CreateRoutingRuleRequest{
+		Priority: priority, ExpressionText: expression,
+		Action: api.RoutingRuleAction{
+			Type: api.RejectActionRoutingRuleAction,
+			RejectAction: api.RejectAction{
+				ActionType: api.RejectActionActionTypeREJECT,
+				ActionPayload: api.RejectActionPayload{
+					SMTPStatusCode:     api.NewOptInt(statusCode),
+					EnhancedStatusCode: api.NewOptString(enhanced),
+					Message:            api.NewOptString(message),
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("create auth reject rule: %w", err)
+	}
+	return nil
 }

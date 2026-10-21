@@ -27,7 +27,11 @@ inside SQLite or in an S3 bucket written by mxRaven's `S3_STORE` action.
   to recover messages whose notification events were missed.
 - Argon2id passwords, mailbox aliases, plus-addressing, catch-all domains, spam
   routing to `Junk`, and per-account IMAP namespaces.
-- Built-in mxRaven setup wizard and a `doctor` command.
+- Built-in mxRaven setup wizard with optional DNS verification wait,
+  authentication-aware MTA rules, Rspamd scanning, and per-listener rate limits.
+- Spam/ham feedback: `$Junk` and `$NotJunk` keyword changes are submitted to
+  mxRaven's feedback service using the exact stored `.eml` bytes.
+- Bounded connection count, ingest concurrency, blob cache, and S3 spool.
 
 ## Build
 
@@ -119,7 +123,8 @@ export MXRAVEN_API_TOKEN=...
   --s3-access-key <read-only-key> \
   --public \
   --acme-email admin@example.com \
-  --acme-domain mail.example.com
+  --acme-domain mail.example.com \
+  --wait
 ```
 
 `--public` sets the standard ports:
@@ -132,7 +137,22 @@ export MXRAVEN_API_TOKEN=...
 | SMTPS | `465` |
 
 You can use `--tls-cert` and `--tls-key` instead of ACME. ACME uses HTTP-01 on
-port 80.
+port 80. `--wait` polls mxRaven until the sending domain and inbound route are
+verified; use `--wait-timeout` and `--wait-interval` to tune it.
+
+Authentication and inbound policy can be configured at setup time:
+
+```sh
+--auth-policy reject-dmarc-fail   # none | reject-dmarc-fail | reject-spf-fail | reject-unauthenticated
+--rspamd                          # default true
+--reject-malware                  # default true
+--reject-high-confidence-spam     # optional
+--mta-message-rate 60 --mta-recipient-rate 120 --mta-task-rate 60 --mta-burst 30 --mta-concurrency 10
+```
+
+The reject policies create mxRaven MTA rules using `authentication.*` and
+`verdicts.*` expression facts. Perch still routes Rspamd spam verdicts to
+`Junk`.
 
 ### S3 mode
 
@@ -144,8 +164,9 @@ perch/{{.recipient.local}}/{{.recipient.domain}}/{{.task.id}}.eml
 ```
 
 Perch needs `s3:GetObject`, `s3:HeadObject`, and `s3:ListBucket`. The mxRaven
-storage integration needs write access. Using separate read-only and write
-credentials is recommended.
+storage integration needs write access. The setup wizard uses the same key for
+both; for a manual deployment, give Perch a read-only key while mxRaven keeps the
+write key.
 
 On ingest, perch temporarily keeps a local copy so the message is immediately
 readable, then evicts it after the S3 attempt confirms the object (unless
@@ -199,11 +220,20 @@ storage:
     key_template: "perch/{{.recipient.local}}/{{.recipient.domain}}/{{.task.id}}.eml"
     reconcile_every: 5m
     spool: false
+    spool_max_bytes: 268435456
+
+limits:
+  max_connections: 512
+  ingest_concurrency: 2
+  blob_cache_bytes: 67108864
+  max_message_bytes: 26214400
+  max_recipients: 100
 
 mxraven:
   submission_host: smtp.mxraven.email
   submission_port: 587
   notification_url: wss://notifications.mxraven.com
+  feedback_url: https://api.mxraven.com
   listeners:
     - id: ...
       kind: mta
@@ -235,8 +265,13 @@ perch version
 ```
 
 `perch doctor` checks SQLite integrity, FTS5 availability, account/dead-letter
-counts, certificate expiry, S3 access, and mxRaven notification/submission
-connectivity.
+and outbound counts, configured limits, certificate expiry, S3 bucket/list
+access and spool size, MX/DMARC DNS records, and mxRaven
+notification/submission connectivity.
+
+`perch gc` removes orphaned local blobs, enforces the S3 spool budget, and can
+purge old dead letters. `--s3-delete` also removes S3 objects for messages the
+user expunged. `perch reconcile` forces an immediate bucket scan.
 
 ## Storage and search
 
@@ -282,7 +317,10 @@ Raven is pinned to `github.com/synqronlabs/raven v1.10.0`.
 - One perch process per SQLite data directory; there is no horizontal scaling.
 - No web UI, JMAP, calendar, contacts, or server-side filters. mxRaven routing
   rules handle inbound policy and archiving.
-- Outbound delivery status is logged but not persisted; Sent copies are created
-  by the IMAP client's APPEND.
-- The local spool is not yet size-capped; run S3 mode for large remote
-  mailboxes.
+- Sent copies are created by the IMAP client's APPEND; perch records submission
+  acceptance and delivery attempts in the `outbound` table.
+- Authentication-based routing is limited to mxRaven reject policies. Perch
+  cannot currently place auth-failed mail in `Junk` because accepted-event
+  payloads do not expose the authentication verdict object.
+- Per-listener rate limits are configured by the setup wizard; changing them
+  later requires the mxRaven control plane or dashboard.

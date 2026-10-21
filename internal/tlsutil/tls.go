@@ -17,34 +17,73 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/synqronlabs/perch/internal/config"
 	"golang.org/x/crypto/acme/autocert"
 )
 
+// Reloader holds a manually supplied certificate and can replace it on SIGHUP.
+type Reloader struct {
+	certFile string
+	keyFile  string
+	cert     atomic.Pointer[tls.Certificate]
+}
+
+// NewReloader loads certFile/keyFile and returns a reloadable certificate
+// provider.
+func NewReloader(certFile, keyFile string) (*Reloader, error) {
+	r := &Reloader{certFile: certFile, keyFile: keyFile}
+	if err := r.Reload(); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// Reload rereads the certificate and key files atomically.
+func (r *Reloader) Reload() error {
+	cert, err := tls.LoadX509KeyPair(r.certFile, r.keyFile)
+	if err != nil {
+		return fmt.Errorf("load TLS certificate: %w", err)
+	}
+	r.cert.Store(&cert)
+	return nil
+}
+
+// Config returns a TLS config backed by the reloadable certificate.
+func (r *Reloader) Config() *tls.Config {
+	return &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			cert := r.cert.Load()
+			if cert == nil {
+				return nil, errors.New("tls: certificate is not loaded")
+			}
+			return cert, nil
+		},
+	}
+}
+
 // Load returns a TLS config for the configured certificate source. It returns
-// (nil, nil) when no certificate source is configured.
-func Load(cfg config.TLSConfig, dataDir string) (*tls.Config, *autocert.Manager, error) {
+// (nil, nil, nil, nil) when no certificate source is configured.
+func Load(cfg config.TLSConfig, dataDir string) (*tls.Config, *autocert.Manager, *Reloader, error) {
 	if cfg.CertFile != "" && cfg.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+		reloader, err := NewReloader(cfg.CertFile, cfg.KeyFile)
 		if err != nil {
-			return nil, nil, fmt.Errorf("load TLS certificate: %w", err)
+			return nil, nil, nil, err
 		}
-		return &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		}, nil, nil
+		return reloader.Config(), nil, reloader, nil
 	}
 	if !cfg.ACME.Enabled {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	cacheDir := cfg.ACME.CacheDir
 	if cacheDir == "" {
 		cacheDir = filepath.Join(dataDir, "acme")
 	}
 	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
-		return nil, nil, fmt.Errorf("create ACME cache directory: %w", err)
+		return nil, nil, nil, fmt.Errorf("create ACME cache directory: %w", err)
 	}
 	manager := &autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
@@ -55,7 +94,7 @@ func Load(cfg config.TLSConfig, dataDir string) (*tls.Config, *autocert.Manager,
 	return &tls.Config{
 		MinVersion:     tls.VersionTLS12,
 		GetCertificate: manager.GetCertificate,
-	}, manager, nil
+	}, manager, nil, nil
 }
 
 // RunACMEHTTP serves HTTP-01 challenges until ctx is cancelled.

@@ -110,6 +110,7 @@ type MXRaVenConfig struct {
 	SubmissionHost  string           `yaml:"submission_host"`
 	SubmissionPort  int              `yaml:"submission_port"`
 	NotificationURL string           `yaml:"notification_url"`
+	FeedbackURL     string           `yaml:"feedback_url"`
 	Listeners       []ListenerConfig `yaml:"listeners"`
 }
 
@@ -185,11 +186,15 @@ func Default() Config {
 		SMTP: SMTPConfig{
 			Addr: "127.0.0.1:1587",
 		},
-		Storage: StorageConfig{Mode: StorageSQLite},
+		Storage: StorageConfig{Mode: StorageSQLite, S3: S3Config{
+			ReconcileEvery: 5 * time.Minute,
+			SpoolMaxBytes:  256 << 20,
+		}},
 		MXRaVen: MXRaVenConfig{
 			SubmissionHost:  "smtp.mxraven.email",
 			SubmissionPort:  587,
 			NotificationURL: "wss://notifications.mxraven.com",
+			FeedbackURL:     "https://api.mxraven.com",
 		},
 		Limits: LimitsConfig{
 			MaxMessageBytes:   25 << 20,
@@ -255,6 +260,9 @@ func (c Config) Validate() error {
 		}
 		if !validS3KeyTemplate(c.Storage.S3.KeyTemplate) {
 			return errors.New("storage.s3.key_template must include {{.task.id}}, end with .eml, and identify a mailbox address")
+		}
+		if c.Storage.S3.Prefix != "" && !strings.HasPrefix(c.Storage.S3.KeyTemplate, c.Storage.S3.Prefix) {
+			return errors.New("storage.s3.key_template must start with storage.s3.prefix so reconciliation can list the same keys")
 		}
 		if c.Storage.S3.Secret() == "" {
 			return errors.New("storage.s3.secret_key or secret_key_env is required in s3 mode")
