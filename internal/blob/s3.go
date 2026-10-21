@@ -90,6 +90,23 @@ func (s *S3) Get(ctx context.Context, key string) ([]byte, error) {
 	return data, nil
 }
 
+// Delete removes one object. It is used only by the explicit gc command.
+func (s *S3) Delete(ctx context.Context, key string) error {
+	if key == "" {
+		return nil
+	}
+	if _, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}); err != nil {
+		if isNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("delete s3 object %q: %w", key, err)
+	}
+	return nil
+}
+
 // Head reports whether an object exists and its size.
 func (s *S3) Head(ctx context.Context, key string) (int64, error) {
 	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{

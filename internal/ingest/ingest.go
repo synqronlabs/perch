@@ -31,6 +31,7 @@ type Ingester struct {
 	hub    *hub.Hub
 	log    *slog.Logger
 	client *http.Client
+	sem    chan struct{}
 }
 
 // New creates an ingester. s3 may be nil in SQLite mode.
@@ -38,9 +39,14 @@ func New(cfg config.Config, st *store.Store, s3 *blob.S3, h *hub.Hub, log *slog.
 	if log == nil {
 		log = slog.Default()
 	}
+	concurrency := cfg.Limits.IngestConcurrency
+	if concurrency <= 0 {
+		concurrency = 1
+	}
 	return &Ingester{
 		cfg: cfg, store: st, s3: s3, hub: h, log: log,
 		client: &http.Client{Timeout: 60 * time.Second},
+		sem:    make(chan struct{}, concurrency),
 	}
 }
 
@@ -58,14 +64,15 @@ func (i *Ingester) Run(ctx context.Context) error {
 	errCh := make(chan error, len(i.cfg.MXRaVen.Listeners))
 	started := 0
 	for _, listener := range i.cfg.MXRaVen.Listeners {
-		if listener.Kind != "mta" {
-			continue
-		}
 		started++
 		wg.Add(1)
 		go func(listener config.ListenerConfig) {
 			defer wg.Done()
 			if err := i.consume(ctx, listener); err != nil && !errors.Is(err, context.Canceled) {
+				if listener.Kind == "submission" {
+					i.log.Warn("submission notification consumer stopped", "listener", listener.ID, "error", err)
+					return
+				}
 				select {
 				case errCh <- err:
 				default:
@@ -75,7 +82,7 @@ func (i *Ingester) Run(ctx context.Context) error {
 		}(listener)
 	}
 	if started == 0 {
-		i.log.Warn("no MTA listeners configured; inbound mail will not be consumed")
+		i.log.Warn("no mxRaven listeners configured; inbound and submission events will not be consumed")
 		return nil
 	}
 	wg.Wait()
@@ -104,22 +111,74 @@ func (i *Ingester) consume(ctx context.Context, listener config.ListenerConfig) 
 		return fmt.Errorf("connect notification listener %s: %w", listener.ID, err)
 	}
 	defer func() { _ = client.Close() }()
-	i.log.Info("consuming mxRaven notifications", "listener", listener.ID)
-	if err := client.Consume(ctx, i.handleEvent); err != nil {
+	i.log.Info("consuming mxRaven notifications", "listener", listener.ID, "kind", listener.Kind)
+	if err := client.Consume(ctx, func(ctx context.Context, event notify.Event) error {
+		return i.handleEvent(ctx, listener.Kind, event)
+	}); err != nil {
 		return fmt.Errorf("consume notification listener %s: %w", listener.ID, err)
 	}
 	return nil
 }
 
-func (i *Ingester) handleEvent(ctx context.Context, event notify.Event) error {
+func (i *Ingester) handleEvent(ctx context.Context, kind string, event notify.Event) error {
+	select {
+	case i.sem <- struct{}{}:
+		defer func() { <-i.sem }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 	switch {
-	case event.Accepted != nil:
+	case event.Accepted != nil && kind == "mta":
 		return i.handleAccepted(ctx, event.Accepted)
-	case event.Attempt != nil:
+	case event.Accepted != nil && kind == "submission":
+		return i.handleSubmissionAccepted(ctx, event.Accepted)
+	case event.Attempt != nil && kind == "submission":
+		return i.handleSubmissionAttempt(ctx, event.Attempt)
+	case event.Attempt != nil && kind == "mta":
 		return i.handleAttempt(ctx, event.Attempt)
 	default:
 		return nil
 	}
+}
+
+func (i *Ingester) handleSubmissionAccepted(ctx context.Context, payload *webhook.InboundEmail) error {
+	if payload == nil || (payload.MessageRef == "" && payload.TaskID == "") {
+		return nil
+	}
+	var accountID int64
+	if account, err := i.store.AccountByAddress(ctx, payload.Envelope.MailFrom); err == nil {
+		accountID = account.ID
+	}
+	return i.store.UpsertOutboundAccepted(ctx, store.Outbound{
+		AccountID: accountID, MessageRef: payload.MessageRef, TaskID: payload.TaskID,
+		FromAddress: payload.Envelope.MailFrom, Recipients: payload.Envelope.RcptTo,
+		Subject: payload.Message.Subject, Status: "accepted",
+		AcceptedAt: time.Unix(payload.AcceptedAtUTC, 0).UTC(),
+		OccurredAt: time.Unix(payload.OccurredAtUTC, 0).UTC(),
+	})
+}
+
+func (i *Ingester) handleSubmissionAttempt(ctx context.Context, attempt *notify.AttemptEvent) error {
+	if attempt == nil || (attempt.MessageRef == "" && attempt.TaskID == "") {
+		return nil
+	}
+	var acceptedAt, occurredAt, nextRetry time.Time
+	if attempt.AcceptedAtUTC > 0 {
+		acceptedAt = time.Unix(attempt.AcceptedAtUTC, 0).UTC()
+	}
+	if attempt.OccurredAtUTC > 0 {
+		occurredAt = time.Unix(attempt.OccurredAtUTC, 0).UTC()
+	}
+	if attempt.NextRetryAtUTC > 0 {
+		nextRetry = time.Unix(attempt.NextRetryAtUTC, 0).UTC()
+	}
+	return i.store.RecordOutboundAttempt(ctx, store.Outbound{
+		MessageRef: attempt.MessageRef, TaskID: attempt.TaskID,
+		Status: string(attempt.Status), Attempt: attempt.Attempt,
+		SMTPCode: attempt.SMTPCode, EnhancedStatus: attempt.EnhancedStatusCode,
+		RemoteResponse: attempt.RemoteResponse, Reason: attempt.Reason,
+		AcceptedAt: acceptedAt, OccurredAt: occurredAt, NextRetryAt: nextRetry,
+	})
 }
 
 func (i *Ingester) handleAccepted(ctx context.Context, payload *webhook.InboundEmail) error {
@@ -206,6 +265,11 @@ func (i *Ingester) handleAccepted(ctx context.Context, payload *webhook.InboundE
 		i.hub.Notify(mailbox.ID)
 		i.log.Info("stored inbound message", "task", payload.TaskID, "account", account.PrimaryAddress,
 			"mailbox", mailboxName, "bytes", len(raw))
+	}
+	if i.cfg.Storage.Mode == config.StorageS3 && i.cfg.Storage.S3.SpoolMaxBytes > 0 {
+		if _, _, err := i.store.EnforceSpoolLimit(ctx, i.cfg.Storage.S3.SpoolMaxBytes); err != nil {
+			i.log.Warn("enforce S3 spool limit", "error", err)
+		}
 	}
 	return nil
 }
@@ -330,6 +394,11 @@ func (i *Ingester) ingestS3Key(ctx context.Context, key string) error {
 		i.log.Info("reconciled S3 message", "key", key, "account", account.PrimaryAddress)
 	}
 	return nil
+}
+
+// ReconcileOnce runs one S3 bucket reconciliation pass.
+func (i *Ingester) ReconcileOnce(ctx context.Context) error {
+	return i.reconcileOnce(ctx)
 }
 
 func (i *Ingester) reconcileLoop(ctx context.Context) {

@@ -50,6 +50,9 @@ func (s *fakeSession) Data(headers server.MessageHeaders, body io.Reader) error 
 }
 func (s *fakeSession) Reset()        {}
 func (s *fakeSession) Logout() error { return nil }
+func (s *fakeSession) DataSuccessResponse() string {
+	return "message_ref=fake-ref-1"
+}
 func (s *fakeSession) AuthMechanisms() []string {
 	return []string{"PLAIN"}
 }
@@ -122,7 +125,7 @@ func TestRelayToUpstream(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	relay := New(cfg, st, nil)
+	relay := New(cfg, st, nil, nil)
 	go func() { _ = relay.Run(ctx, nil) }()
 	waitForListener(t, localAddr)
 
@@ -151,6 +154,13 @@ func TestRelayToUpstream(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("upstream did not receive the message")
+	}
+	rows, err := st.ListOutbound(context.Background(), 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].MessageRef != "fake-ref-1" {
+		t.Fatalf("outbound rows = %+v", rows)
 	}
 }
 

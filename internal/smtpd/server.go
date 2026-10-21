@@ -15,6 +15,7 @@ import (
 
 	"github.com/synqronlabs/perch/internal/authlimit"
 	"github.com/synqronlabs/perch/internal/config"
+	"github.com/synqronlabs/perch/internal/netlimit"
 	"github.com/synqronlabs/perch/internal/store"
 	"github.com/synqronlabs/raven/server"
 )
@@ -25,14 +26,15 @@ type Server struct {
 	store *store.Store
 	log   *slog.Logger
 	login *authlimit.Limiter
+	limit *netlimit.Limiter
 }
 
 // New creates a submission server.
-func New(cfg config.Config, st *store.Store, log *slog.Logger) *Server {
+func New(cfg config.Config, st *store.Store, log *slog.Logger, limit *netlimit.Limiter) *Server {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Server{cfg: cfg, store: st, log: log, login: authlimit.New(10, 5*time.Minute)}
+	return &Server{cfg: cfg, store: st, log: log, login: authlimit.New(10, 5*time.Minute), limit: limit}
 }
 
 // Run starts the configured submission listeners and blocks until ctx is
@@ -74,15 +76,20 @@ func (s *Server) Run(ctx context.Context, tlsConfig *tls.Config) error {
 			DataTimeout:        10 * time.Minute,
 			ErrorLog:           smtpLogger{log: s.log},
 		})
+		ln, err := net.Listen("tcp", spec.addr)
+		if err != nil {
+			return fmt.Errorf("listen on %s: %w", spec.addr, err)
+		}
+		if s.limit != nil {
+			ln = s.limit.Wrap(ln)
+		}
+		if spec.tls {
+			ln = tls.NewListener(ln, tlsConfig)
+		}
 		wg.Add(1)
-		go func(spec listenerSpec, srv *server.Server) {
+		go func(spec listenerSpec, srv *server.Server, ln net.Listener) {
 			defer wg.Done()
-			var err error
-			if spec.tls {
-				err = srv.ListenAndServeTLS(ctx)
-			} else {
-				err = srv.ListenAndServe(ctx)
-			}
+			err := srv.Serve(ctx, ln)
 			if err != nil && !errors.Is(err, server.ErrServerClosed) && ctx.Err() == nil {
 				select {
 				case errCh <- err:
@@ -90,7 +97,7 @@ func (s *Server) Run(ctx context.Context, tlsConfig *tls.Config) error {
 				}
 				cancel()
 			}
-		}(spec, srv)
+		}(spec, srv, ln)
 	}
 	if started == 0 {
 		return nil
