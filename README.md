@@ -310,18 +310,3 @@ go vet ./...
 
 The mxRaven SDK is pinned to `github.com/synqronlabs/mxraven-go v0.9.0`.
 Raven is pinned to `github.com/synqronlabs/raven v1.10.0`.
-
-## Known limitations
-
-- CONDSTORE/QRESYNC, SORT, THREAD, QUOTA, METADATA, and shared mailboxes are not
-  implemented yet.
-- One perch process per SQLite data directory; there is no horizontal scaling.
-- No web UI, JMAP, calendar, contacts, or server-side filters. mxRaven routing
-  rules handle inbound policy and archiving.
-- Sent copies are created by the IMAP client's APPEND; perch records submission
-  acceptance and delivery attempts in the `outbound` table.
-- Authentication-based routing is limited to mxRaven reject policies. Perch
-  cannot currently place auth-failed mail in `Junk` because accepted-event
-  payloads do not expose the authentication verdict object.
-- Per-listener rate limits are configured by the setup wizard; changing them
-  later requires the mxRaven control plane or dashboard.
