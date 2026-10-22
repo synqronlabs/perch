@@ -18,6 +18,10 @@ Requires Go 1.26.4 or later (CGO-free build):
 go build -o perch ./cmd/perch
 ```
 
+For a long-running Linux deployment, see [Run as a systemd
+service](#run-as-a-systemd-service-linux), including optional timers for
+backups and garbage collection.
+
 ## Quickstart (Homelab / Local Hardware)
 
 ### 1. Provision mxRaven and generate config
@@ -28,6 +32,8 @@ With an [mxRaven](https://mxraven.com) API token, `perch setup` automatically co
 export MXRAVEN_API_TOKEN=...
 
 ./perch setup \
+  --config ~/.local/share/perch/perch.yaml \
+  --data-dir ~/.local/share/perch \
   --workspace my-workspace \
   --domain example.com \
   --hostname localhost
@@ -66,6 +72,8 @@ export MXRAVEN_API_TOKEN=...
 export PERCH_S3_SECRET_KEY=...
 
 ./perch setup \
+  --config ~/.local/share/perch/perch.yaml \
+  --data-dir ~/.local/share/perch \
   --workspace my-workspace \
   --domain example.com \
   --hostname mail.example.com \
@@ -153,6 +161,296 @@ mxraven:
 Secrets can be inline (protected by file permissions) or referenced through
 environment variables. The control-plane token is used only by `perch setup`
 and is never written to the config.
+
+## Run as a systemd service (Linux)
+
+`perch serve` runs in the foreground, logs to stderr, drains connections on
+`SIGTERM`/`SIGINT` (waiting up to five seconds), and reloads certificate files
+on `SIGHUP`, so it maps directly onto a `Type=simple` unit. It does not fork,
+write a PID file, implement `sd_notify`, or support socket activation, so do
+not use `Type=notify` or socket units.
+
+The instructions below use a dedicated `perch` service account,
+`/etc/perch/perch.yaml` for configuration, and `/var/lib/perch` for data.
+Adjust the paths if your layout differs, and keep `data_dir` in the YAML in
+sync with the unit's `StateDirectory` and `ReadWritePaths`.
+
+> The built-in default config path comes from `os.UserConfigDir()`
+> (`$XDG_CONFIG_HOME/perch/perch.yaml`, usually `~/.config/perch/perch.yaml`).
+> Always pass `--config` explicitly in service units rather than relying on
+> `$HOME`.
+
+### 1. Create the service account and install
+
+```sh
+sudo useradd --system --home-dir /var/lib/perch --shell /usr/sbin/nologin perch
+sudo install -Dm0755 perch /usr/local/bin/perch
+sudo install -d -m 0700 -o perch -g perch /etc/perch /var/lib/perch
+
+# Provision mxRaven and write the config as the service user.
+sudo -u perch -H env MXRAVEN_API_TOKEN=... \
+  /usr/local/bin/perch setup \
+  --config /etc/perch/perch.yaml \
+  --data-dir /var/lib/perch \
+  --workspace my-workspace \
+  --domain example.com \
+  --hostname mail.example.com
+
+# Create the first mailbox.
+sudo -u perch -H /usr/local/bin/perch account add \
+  --config /etc/perch/perch.yaml \
+  --email you@example.com
+```
+
+Run `perch setup`, `perch init`, `perch account`, and `perch doctor` as the
+service user (or `chown` their output afterwards). `perch` writes the config
+with mode `0600` and the data directory with mode `0700`, so a root-owned
+config will not be readable by the `perch` account.
+
+Verify everything before starting the service:
+
+```sh
+sudo -u perch -H /usr/local/bin/perch doctor --config /etc/perch/perch.yaml
+```
+
+### 2. Create the unit
+
+Write `/etc/systemd/system/perch.service`:
+
+```ini
+[Unit]
+Description=perch mail server
+Documentation=https://github.com/synqronlabs/perch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=perch
+Group=perch
+ExecStart=/usr/local/bin/perch serve --config /etc/perch/perch.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+EnvironmentFile=-/etc/perch/perch.env
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+LimitNOFILE=65536
+UMask=0077
+
+# Must match data_dir in /etc/perch/perch.yaml.
+StateDirectory=perch
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/perch
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+If you use `perch setup --public` (ports `143`/`993`/`587`/`465`) or ACME
+(the HTTP-01 listener binds `:80`), add these two lines to the `[Service]`
+section so the unprivileged service user can bind privileged ports:
+
+```ini
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+```
+
+Open the corresponding ports in your firewall; for a public deployment:
+
+```sh
+sudo ufw allow 80/tcp
+sudo ufw allow 143,993,587,465/tcp
+```
+
+The default quickstart ports (`1143`/`1587`/`1993`/`1465`) are unprivileged and
+need neither capabilities nor firewall changes for loopback use.
+
+`ProtectSystem=strict` and `ProtectHome=true` assume the config lives under
+`/etc` and the data directory under `/var/lib`. If you keep either under a home
+directory, relax those options or add the necessary `ReadWritePaths`. The ACME
+cache defaults to `<data_dir>/acme`, so it is writable via `StateDirectory`;
+add it to `ReadWritePaths` if you set `tls.acme.cache_dir` elsewhere.
+
+`ExecReload` sends SIGHUP, which `perch` only handles when `tls.cert_file` and
+`tls.key_file` are configured. With ACME or a plaintext-only loopback setup,
+remove the `ExecReload` line: SIGHUP would terminate the process.
+
+### 3. Optional: secrets from the environment
+
+`perch setup` writes listener and S3 secrets inline into the `0600` config by
+default. To keep them out of the YAML, replace `key_secret:` with
+`key_secret_env: PERCH_MXRAVEN_KEY_SECRET` (and similarly for the submission
+listener) and `secret_key:` with `secret_key_env: PERCH_S3_SECRET_KEY`, then
+put the values in `/etc/perch/perch.env`:
+
+```sh
+sudo install -m 0600 /dev/null /etc/perch/perch.env
+sudo tee /etc/perch/perch.env >/dev/null <<'EOF'
+PERCH_S3_SECRET_KEY=...
+PERCH_MXRAVEN_KEY_SECRET=...
+PERCH_MXRAVEN_SUBMISSION_KEY_SECRET=...
+EOF
+```
+
+systemd reads `EnvironmentFile` as root before dropping privileges, so the file
+can remain root-owned and unreadable by the service account.
+
+### 4. Enable and verify
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now perch
+sudo systemctl status perch
+sudo journalctl -u perch -f
+```
+
+Logs are captured by journald; set `log.format: json` in `perch.yaml` for
+structured output. Account, alias, and mailbox changes are written to SQLite
+and apply immediately without a restart. After changing `perch.yaml`, run
+`sudo systemctl restart perch`. When `tls.cert_file` and `tls.key_file` are
+configured, manual certificates reload without dropping connections via
+`sudo systemctl reload perch` (SIGHUP); ACME renews and reloads on its own and
+needs no reload command.
+
+### 5. systemd timers for maintenance
+
+`perch gc` and `perch backup` are one-shot commands and are safe to run while
+`perch serve` is running (SQLite WAL mode allows concurrent readers and
+writers). `perch reconcile` does not need a timer: `serve` reconciles S3 at
+startup and every `storage.s3.reconcile_every` (default `5m`).
+
+#### Backup timer
+
+`perch backup` refuses to overwrite an existing destination, so use a small
+wrapper to add timestamps and prune old copies (adjust `-mtime +14` to match
+your retention policy). Write `/usr/local/bin/perch-backup`:
+
+```sh
+sudo tee /usr/local/bin/perch-backup >/dev/null <<'EOF'
+#!/bin/sh
+set -eu
+stamp=$(date +%Y%m%d-%H%M%S)
+/usr/local/bin/perch backup --config /etc/perch/perch.yaml "/var/lib/perch/backups/perch-$stamp.db"
+find /var/lib/perch/backups -type f -name 'perch-*.db' -mtime +14 -delete
+EOF
+sudo chmod 0755 /usr/local/bin/perch-backup
+```
+
+Write `/etc/systemd/system/perch-backup.service`:
+
+```ini
+[Unit]
+Description=perch SQLite backup
+After=perch.service
+
+[Service]
+Type=oneshot
+User=perch
+Group=perch
+ExecStart=/usr/local/bin/perch-backup
+EnvironmentFile=-/etc/perch/perch.env
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+```
+
+Write `/etc/systemd/system/perch-backup.timer`:
+
+```ini
+[Unit]
+Description=Daily perch backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=perch-backup.service
+
+[Install]
+WantedBy=timers.target
+```
+
+#### Garbage collection timer
+
+`perch gc` removes orphaned local blobs, dead letters older than 30 days
+(`--dead-letter-age`), and enforces the S3 spool limit, then runs an incremental
+vacuum. Add `--s3-delete` if you also want it to delete S3 objects belonging to
+deleted messages; without it, those tombstones accumulate.
+
+Write `/etc/systemd/system/perch-gc.service`:
+
+```ini
+[Unit]
+Description=perch garbage collection
+After=perch.service
+
+[Service]
+Type=oneshot
+User=perch
+Group=perch
+ExecStart=/usr/local/bin/perch gc --config /etc/perch/perch.yaml
+EnvironmentFile=-/etc/perch/perch.env
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+```
+
+Write `/etc/systemd/system/perch-gc.timer`:
+
+```ini
+[Unit]
+Description=Daily perch garbage collection
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=perch-gc.service
+
+[Install]
+WantedBy=timers.target
+```
+
+#### Enable the timers
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now perch-backup.timer perch-gc.timer
+systemctl list-timers --all 'perch-*'
+```
+
+Run a job immediately with `sudo systemctl start perch-backup.service` or
+`sudo systemctl start perch-gc.service`; inspect results with
+`journalctl -u perch-backup.service -u perch-gc.service`.
+
+The timers run as `perch` and only need the same config and environment as the
+main service. If `storage.mode` is `sqlite`, `--s3-delete` and the spool steps
+are ignored. To take an on-demand backup, run the wrapper or
+`sudo -u perch -H /usr/local/bin/perch backup --config /etc/perch/perch.yaml /path/to/copy.db`
+(the destination must not already exist, and `perch` must be able to write to
+its directory).
+
+### 6. Optional: rootless user service
+
+`perch` also works as a per-user service under `systemctl --user`. Put the unit
+in `~/.config/systemd/user/`, drop `User=`, `Group=`, and `StateDirectory=`,
+adjust the `ProtectHome`/`ProtectSystem`/`ReadWritePaths` options for your home
+layout, and pass explicit `--config`/`--data-dir` paths. Enable lingering so the
+service survives logout:
+
+```sh
+loginctl enable-linger "$USER"
+systemctl --user enable --now perch
+```
+
+User services cannot acquire `CAP_NET_BIND_SERVICE`, so this only works with
+unprivileged listener ports (the quickstart defaults, or custom ports above
+`1024`). Use the system-level unit for `--public` or ACME.
 
 ## CLI Reference
 
