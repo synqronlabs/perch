@@ -21,6 +21,12 @@ import (
 
 func startTestServer(t *testing.T) (addr string, st *store.Store, stop func()) {
 	t.Helper()
+	addr, st, _, stop = startTestServerWithBackend(t)
+	return addr, st, stop
+}
+
+func startTestServerWithBackend(t *testing.T) (addr string, st *store.Store, backend *Server, stop func()) {
+	t.Helper()
 	cfg := config.Default()
 	cfg.DataDir = t.TempDir()
 	cfg.Storage.Mode = config.StorageSQLite
@@ -35,14 +41,14 @@ func startTestServer(t *testing.T) (addr string, st *store.Store, stop func()) {
 	if _, err := st.CreateAccount(context.Background(), "user@example.com", "User", hash); err != nil {
 		t.Fatal(err)
 	}
-	backend := New(cfg, st, hub.New(), nil, slog.Default())
+	backend = New(cfg, st, hub.New(), nil, slog.Default())
 	srv := imapserver.New(backend.Options(nil, true))
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	go func() { _ = srv.Serve(ln) }()
-	return ln.Addr().String(), st, func() {
+	return ln.Addr().String(), st, backend, func() {
 		_ = srv.Close()
 		_ = st.Close()
 	}
