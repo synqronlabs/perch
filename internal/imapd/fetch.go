@@ -289,6 +289,11 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 	if err != nil {
 		return imapError(imap.StatusResponseTypeNo, imap.ResponseCodeCannot, err.Error())
 	}
+	// Clients commonly signal junk status by moving a message into or out of
+	// the Junk mailbox instead of setting a keyword, so train from the move.
+	if disposition := moveDisposition(sel.mailbox, destMailbox); disposition != "" {
+		s.srv.trainMovedFeedback(context.Background(), disposition, destMailbox.ID, result.DestUIDs)
+	}
 	if err := w.WriteCopyData(copyData(result)); err != nil {
 		return err
 	}
@@ -378,9 +383,9 @@ func feedbackDisposition(flags []imap.Flag) mxfeedback.Disposition {
 	var spam, ham bool
 	for _, flag := range flags {
 		switch strings.ToLower(string(flag)) {
-		case "$junk":
+		case "$junk", "junk":
 			spam = true
-		case "$notjunk":
+		case "$notjunk", "$nonjunk", "notjunk", "nonjunk":
 			ham = true
 		}
 	}
@@ -388,6 +393,23 @@ func feedbackDisposition(flags []imap.Flag) mxfeedback.Disposition {
 	case spam && !ham:
 		return mxfeedback.DispositionSpam
 	case ham && !spam:
+		return mxfeedback.DispositionHam
+	default:
+		return ""
+	}
+}
+
+// moveDisposition returns the training signal implied by moving messages
+// between two mailboxes. Moving into Junk is spam; moving out of Junk (except
+// to Trash, which is deletion, not a correction) is ham.
+func moveDisposition(source, dest store.Mailbox) mxfeedback.Disposition {
+	sourceJunk := strings.EqualFold(source.SpecialUse, `\Junk`)
+	destJunk := strings.EqualFold(dest.SpecialUse, `\Junk`)
+	destTrash := strings.EqualFold(dest.SpecialUse, `\Trash`)
+	switch {
+	case destJunk && !sourceJunk:
+		return mxfeedback.DispositionSpam
+	case sourceJunk && !destJunk && !destTrash:
 		return mxfeedback.DispositionHam
 	default:
 		return ""

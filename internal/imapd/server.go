@@ -165,3 +165,19 @@ func (s *Server) trainFeedback(ctx context.Context, disposition mxfeedback.Dispo
 		s.log.Info("feedback submitted", "message", message.ID, "disposition", result.Disposition, "matched", result.MatchedHashKind)
 	}()
 }
+
+// trainMovedFeedback trains mxRaven for messages that were moved between the
+// Junk mailbox and another mailbox.
+func (s *Server) trainMovedFeedback(ctx context.Context, disposition mxfeedback.Disposition, mailboxID int64, uids []uint32) {
+	if s.feedback == nil || len(uids) == 0 {
+		return
+	}
+	messages, err := s.store.MessagesByUIDs(ctx, mailboxID, uids)
+	if err != nil {
+		s.log.Warn("feedback messages unavailable", "mailbox", mailboxID, "error", err)
+		return
+	}
+	for _, message := range messages {
+		s.trainFeedback(ctx, disposition, message)
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emersion/go-imap/v2"
 	mxfeedback "github.com/synqronlabs/mxraven-go/mail/feedback"
 	"github.com/synqronlabs/perch/internal/config"
 	"github.com/synqronlabs/perch/internal/hub"
@@ -80,5 +81,138 @@ func TestFeedbackTraining(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("feedback was not submitted")
+	}
+}
+
+func TestFeedbackKeywordMapping(t *testing.T) {
+	tests := []struct {
+		name  string
+		flags []imap.Flag
+		want  mxfeedback.Disposition
+	}{
+		{"dollar junk", []imap.Flag{"$Junk"}, mxfeedback.DispositionSpam},
+		{"legacy junk", []imap.Flag{"Junk"}, mxfeedback.DispositionSpam},
+		{"dollar not junk", []imap.Flag{"$NotJunk"}, mxfeedback.DispositionHam},
+		{"legacy not junk", []imap.Flag{"NonJunk"}, mxfeedback.DispositionHam},
+		{"conflicting", []imap.Flag{"$Junk", "NonJunk"}, ""},
+		{"unrelated", []imap.Flag{imap.FlagSeen}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := feedbackDisposition(tt.flags); got != tt.want {
+				t.Fatalf("feedbackDisposition(%v) = %q, want %q", tt.flags, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMoveDisposition(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		dest   string
+		want   mxfeedback.Disposition
+	}{
+		{"into junk", `\Archive`, `\Junk`, mxfeedback.DispositionSpam},
+		{"out of junk", `\Junk`, `\Archive`, mxfeedback.DispositionHam},
+		{"junk to inbox", `\Junk`, "", mxfeedback.DispositionHam},
+		{"junk to trash", `\Junk`, `\Trash`, ""},
+		{"unrelated", `\Archive`, "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := moveDisposition(store.Mailbox{SpecialUse: tt.source}, store.Mailbox{SpecialUse: tt.dest})
+			if got != tt.want {
+				t.Fatalf("moveDisposition(%q, %q) = %q, want %q", tt.source, tt.dest, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMoveTrainsFeedback(t *testing.T) {
+	type request struct {
+		path string
+		body string
+	}
+	requests := make(chan request, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		requests <- request{path: r.URL.Path, body: string(body)}
+		w.Header().Set("Content-Type", "application/json")
+		disposition := strings.TrimPrefix(r.URL.Path, "/v1/feedback/learn/")
+		_, _ = w.Write([]byte(`{"status":"learned","disposition":"` + disposition + `","matched_hash_kind":"accepted_eml_sha256"}`))
+	}))
+	defer server.Close()
+	client, err := mxfeedback.New(
+		mxfeedback.WithBaseURL(server.URL),
+		mxfeedback.WithCredentials("key", "secret"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	addr, _, backend, stop := startTestServerWithBackend(t)
+	defer stop()
+	backend.feedback = client
+
+	imapClient := dialTest(t, addr)
+	if _, err := imapClient.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	appendCmd := imapClient.Append("INBOX", int64(len(testRaw)), nil)
+	if _, err := appendCmd.Write([]byte(testRaw)); err != nil {
+		t.Fatal(err)
+	}
+	if err := appendCmd.Close(); err != nil {
+		t.Fatal(err)
+	}
+	appended, err := appendCmd.Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	moveData, err := imapClient.Move(imap.UIDSetNum(appended.UID), "Junk").Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	junkUIDs, ok := moveData.DestUIDs.(imap.UIDSet)
+	if !ok {
+		t.Fatalf("move into Junk data = %+v", moveData)
+	}
+	junkNums, ok := junkUIDs.Nums()
+	if !ok || len(junkNums) == 0 {
+		t.Fatalf("move into Junk UIDs = %v", junkUIDs)
+	}
+
+	if _, err := imapClient.Select("Junk", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := imapClient.Move(imap.UIDSetNum(junkNums...), "INBOX").Wait(); err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]bool{
+		"/v1/feedback/learn/spam": false,
+		"/v1/feedback/learn/ham":  false,
+	}
+	deadline := time.After(5 * time.Second)
+	for remaining := len(want); remaining > 0; {
+		select {
+		case req := <-requests:
+			if _, ok := want[req.path]; !ok {
+				t.Fatalf("unexpected feedback path %q", req.path)
+			}
+			if !strings.Contains(req.body, "invoice message") {
+				t.Fatalf("feedback body = %q", req.body)
+			}
+			want[req.path] = true
+			remaining--
+		case <-deadline:
+			t.Fatalf("feedback submissions = %v", want)
+		}
+	}
+	for path, seen := range want {
+		if !seen {
+			t.Fatalf("no feedback submitted to %s", path)
+		}
 	}
 }
