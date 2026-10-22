@@ -2,6 +2,7 @@ package imapd
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,14 +20,7 @@ func (s *session) Poll(w *imapserver.UpdateWriter, allowExpunge bool) error {
 	if err != nil {
 		return err
 	}
-	newView := make([]uint32, 0, len(states))
-	newFlags := make(map[uint32]store.Flags, len(states))
-	newKeywords := make(map[uint32][]string, len(states))
-	for _, state := range states {
-		newView = append(newView, state.UID)
-		newFlags[state.UID] = state.Flags
-		newKeywords[state.UID] = state.Keywords
-	}
+	newView, newFlags, newKeywords := mailboxView(states)
 	newSet := make(map[uint32]struct{}, len(newView))
 	for _, uid := range newView {
 		newSet[uid] = struct{}{}
@@ -43,7 +37,8 @@ func (s *session) Poll(w *imapserver.UpdateWriter, allowExpunge bool) error {
 		// Leave the session view untouched and retry on the next poll.
 		return nil
 	}
-	sortDescending(expunged)
+	slices.Sort(expunged)
+	slices.Reverse(expunged)
 	for _, seq := range expunged {
 		if err := w.WriteExpunge(seq); err != nil {
 			return err
@@ -316,27 +311,18 @@ func matchHeader(doc searchDoc, key, value string) bool {
 }
 
 func hasFlag(doc searchDoc, flag imap.Flag) bool {
-	switch strings.ToLower(string(flag)) {
-	case `\seen`:
-		return doc.msg.Flags.Has(store.FlagSeen)
-	case `\answered`:
-		return doc.msg.Flags.Has(store.FlagAnswered)
-	case `\flagged`:
-		return doc.msg.Flags.Has(store.FlagFlagged)
-	case `\deleted`:
-		return doc.msg.Flags.Has(store.FlagDeleted)
-	case `\draft`:
-		return doc.msg.Flags.Has(store.FlagDraft)
-	case `\recent`:
-		return false
-	default:
-		for _, keyword := range doc.msg.Keywords {
-			if strings.EqualFold(keyword, string(flag)) {
-				return true
-			}
-		}
+	if bit, ok := systemFlag(flag); ok {
+		return doc.msg.Flags.Has(bit)
+	}
+	if strings.EqualFold(string(flag), `\recent`) {
 		return false
 	}
+	for _, keyword := range doc.msg.Keywords {
+		if strings.EqualFold(keyword, string(flag)) {
+			return true
+		}
+	}
+	return false
 }
 
 func containsFold(haystack, needle string) bool {

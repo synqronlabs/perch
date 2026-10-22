@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
 	mxfeedback "github.com/synqronlabs/mxraven-go/mail/feedback"
+	"github.com/synqronlabs/perch/internal/mailmsg"
 	"github.com/synqronlabs/perch/internal/mailparse"
 	"github.com/synqronlabs/perch/internal/store"
 )
@@ -43,24 +45,13 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 			internal = options.Time.UTC()
 		}
 	}
-	msg, _, err := s.srv.store.InsertMessage(context.Background(), store.MessageInput{
-		AccountID: s.account.ID, MailboxID: m.ID,
-		Raw: raw, StoreData: true, Kind: "local",
-		Size: int64(len(raw)), InternalDate: internal,
-		MessageID: parsed.MessageID, Subject: parsed.Subject,
-		From: convertAddresses(parsed.From), To: convertAddresses(parsed.To),
-		Cc: convertAddresses(parsed.Cc), Bcc: convertAddresses(parsed.Bcc),
-		ReplyTo:   convertAddresses(parsed.ReplyTo),
-		InReplyTo: parsed.InReplyTo, References: parsed.References, SentAt: optionalTime(parsed.Date),
-		Headers: convertHeaders(parsed.Headers), MIMETree: parsed.MIMETree,
-		Flags: flags, Keywords: keywords,
-		Search: store.SearchContent{
-			Subject: parsed.Search.Subject, Sender: parsed.Search.Sender,
-			Recipients: parsed.Search.Recipients, Headers: parsed.Search.Headers,
-			Body: parsed.Search.Body, Attachments: parsed.Search.Attachments,
-		},
-		DedupeRaw: false,
-	})
+	input := mailmsg.Input(s.account.ID, m.ID, raw, parsed)
+	input.Kind = "local"
+	input.StoreData = true
+	input.InternalDate = internal
+	input.Flags = flags
+	input.Keywords = keywords
+	msg, _, err := s.srv.store.InsertMessage(context.Background(), input)
 	if err != nil {
 		return nil, imapError(imap.StatusResponseTypeNo, imap.ResponseCodeCannot, err.Error())
 	}
@@ -308,7 +299,8 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 			seqs = append(seqs, seq)
 		}
 	}
-	sortDescending(seqs)
+	slices.Sort(seqs)
+	slices.Reverse(seqs)
 	for _, seq := range seqs {
 		if err := w.WriteExpunge(seq); err != nil {
 			return err
@@ -346,7 +338,8 @@ func (s *session) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) error 
 			seqs = append(seqs, seq)
 		}
 	}
-	sortDescending(seqs)
+	slices.Sort(seqs)
+	slices.Reverse(seqs)
 	for _, seq := range seqs {
 		if err := w.WriteExpunge(seq); err != nil {
 			return err
@@ -381,14 +374,6 @@ func (s *session) removeUID(uid uint32) {
 	delete(s.sel.keywords, uid)
 }
 
-func sortDescending(values []uint32) {
-	for i := 1; i < len(values); i++ {
-		for j := i; j > 0 && values[j] > values[j-1]; j-- {
-			values[j], values[j-1] = values[j-1], values[j]
-		}
-	}
-}
-
 func feedbackDisposition(flags []imap.Flag) mxfeedback.Disposition {
 	var spam, ham bool
 	for _, flag := range flags {
@@ -413,17 +398,11 @@ func parseFlags(flags []imap.Flag) (store.Flags, []string) {
 	var system store.Flags
 	var keywords []string
 	for _, flag := range flags {
+		if bit, ok := systemFlag(flag); ok {
+			system |= bit
+			continue
+		}
 		switch strings.ToLower(string(flag)) {
-		case `\seen`:
-			system |= store.FlagSeen
-		case `\answered`:
-			system |= store.FlagAnswered
-		case `\flagged`:
-			system |= store.FlagFlagged
-		case `\deleted`:
-			system |= store.FlagDeleted
-		case `\draft`:
-			system |= store.FlagDraft
 		case `\recent`, `\*`:
 			// Recent is session state we intentionally do not persist.
 		default:
@@ -459,30 +438,6 @@ func imapAddresses(in []store.Address) []imap.Address {
 		out = append(out, imap.Address{Name: address.Name, Mailbox: address.Address[:at], Host: address.Address[at+1:]})
 	}
 	return out
-}
-
-func convertAddresses(in []mailparse.Address) []store.Address {
-	out := make([]store.Address, 0, len(in))
-	for _, address := range in {
-		out = append(out, store.Address{Name: address.Name, Address: address.Address})
-	}
-	return out
-}
-
-func convertHeaders(in []mailparse.Header) []store.Header {
-	out := make([]store.Header, 0, len(in))
-	for _, header := range in {
-		out = append(out, store.Header{Name: header.Name, Value: header.Value})
-	}
-	return out
-}
-
-func optionalTime(t time.Time) *time.Time {
-	if t.IsZero() {
-		return nil
-	}
-	t = t.UTC()
-	return &t
 }
 
 func uidsToIMAP(uids []uint32) []imap.UID {

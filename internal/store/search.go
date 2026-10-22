@@ -2,8 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -44,24 +42,6 @@ func (s *Store) MailboxState(ctx context.Context, mailboxID int64) ([]MessageSta
 	return out, rows.Err()
 }
 
-// MailboxUIDs returns all UIDs in ascending order.
-func (s *Store) MailboxUIDs(ctx context.Context, mailboxID int64) ([]uint32, error) {
-	rows, err := s.reader.QueryContext(ctx, `SELECT uid FROM messages WHERE mailbox_id = ? ORDER BY uid`, mailboxID)
-	if err != nil {
-		return nil, fmt.Errorf("list mailbox uids: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var uids []uint32
-	for rows.Next() {
-		var uid uint32
-		if err := rows.Scan(&uid); err != nil {
-			return nil, fmt.Errorf("scan mailbox uid: %w", err)
-		}
-		uids = append(uids, uid)
-	}
-	return uids, rows.Err()
-}
-
 // MessageCount returns the number of messages in a mailbox.
 func (s *Store) MessageCount(ctx context.Context, mailboxID int64) (uint32, error) {
 	var count uint32
@@ -77,15 +57,10 @@ func (s *Store) SearchContentByIDs(ctx context.Context, ids []int64) (map[int64]
 	if len(ids) == 0 {
 		return out, nil
 	}
-	for _, chunk := range chunks64(ids, 500) {
-		placeholders := strings.TrimRight(strings.Repeat("?,", len(chunk)), ",")
-		args := make([]any, 0, len(chunk))
-		for _, id := range chunk {
-			args = append(args, id)
-		}
+	for _, chunk := range chunks(ids, 500) {
 		rows, err := s.reader.QueryContext(ctx, `
 			SELECT message_id, subject, sender, recipients, headers, body, attachments
-			FROM search_content WHERE message_id IN (`+placeholders+`)`, args...)
+			FROM search_content WHERE message_id IN (`+placeholders(len(chunk))+`)`, argsFor(chunk)...)
 		if err != nil {
 			return nil, fmt.Errorf("load search content: %w", err)
 		}
@@ -162,30 +137,6 @@ func (s *Store) CountIndexed(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("count FTS index: %w", err)
 	}
 	return count, nil
-}
-
-// SyncValue reads a value from sync_state.
-func (s *Store) SyncValue(ctx context.Context, key string) (string, error) {
-	var value string
-	err := s.reader.QueryRowContext(ctx, `SELECT value FROM sync_state WHERE key = ?`, key).Scan(&value)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrNotFound
-	}
-	if err != nil {
-		return "", fmt.Errorf("read sync state: %w", err)
-	}
-	return value, nil
-}
-
-// SetSyncValue writes a value to sync_state.
-func (s *Store) SetSyncValue(ctx context.Context, key, value string) error {
-	_, err := s.writer.ExecContext(ctx, `
-		INSERT INTO sync_state (key, value) VALUES (?, ?)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
-	if err != nil {
-		return fmt.Errorf("write sync state: %w", err)
-	}
-	return nil
 }
 
 // DeadLetter stores a message that could not be routed to an account.

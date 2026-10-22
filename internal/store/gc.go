@@ -14,34 +14,20 @@ func (s *Store) GCLocalOrphans(ctx context.Context, dryRun bool) (int, int64, er
 		return 0, 0, fmt.Errorf("begin local gc: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, `
-		SELECT b.id, b.size FROM blobs b
-		WHERE b.kind = 'local' AND b.refcount <= 0
-		  AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.blob_id = b.id)`)
-	if err != nil {
-		return 0, 0, fmt.Errorf("list orphan blobs: %w", err)
-	}
-	var ids []int64
 	var count int
 	var bytes int64
-	for rows.Next() {
-		var id, size int64
-		if err := rows.Scan(&id, &size); err != nil {
-			_ = rows.Close()
-			return 0, 0, fmt.Errorf("scan orphan blob: %w", err)
-		}
-		ids = append(ids, id)
-		count++
-		bytes += size
-	}
-	if err := rows.Close(); err != nil {
-		return 0, 0, fmt.Errorf("close orphan blobs: %w", err)
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*), COALESCE(SUM(b.size),0) FROM blobs b
+		WHERE b.kind = 'local' AND b.refcount <= 0
+		  AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.blob_id = b.id)`).Scan(&count, &bytes); err != nil {
+		return 0, 0, fmt.Errorf("list orphan blobs: %w", err)
 	}
 	if !dryRun {
-		for _, id := range ids {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM blobs WHERE id = ?`, id); err != nil {
-				return 0, 0, fmt.Errorf("delete orphan blob: %w", err)
-			}
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM blobs
+			WHERE kind = 'local' AND refcount <= 0
+			  AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.blob_id = blobs.id)`); err != nil {
+			return 0, 0, fmt.Errorf("delete orphan blobs: %w", err)
 		}
 		if err := tx.Commit(); err != nil {
 			return 0, 0, fmt.Errorf("commit local gc: %w", err)

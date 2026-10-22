@@ -2,6 +2,7 @@
 package ingest
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -18,6 +19,7 @@ import (
 	"github.com/synqronlabs/perch/internal/blob"
 	"github.com/synqronlabs/perch/internal/config"
 	"github.com/synqronlabs/perch/internal/hub"
+	"github.com/synqronlabs/perch/internal/mailmsg"
 	"github.com/synqronlabs/perch/internal/mailparse"
 	"github.com/synqronlabs/perch/internal/store"
 )
@@ -162,22 +164,13 @@ func (i *Ingester) handleSubmissionAttempt(ctx context.Context, attempt *notify.
 	if attempt == nil || (attempt.MessageRef == "" && attempt.TaskID == "") {
 		return nil
 	}
-	var acceptedAt, occurredAt, nextRetry time.Time
-	if attempt.AcceptedAtUTC > 0 {
-		acceptedAt = time.Unix(attempt.AcceptedAtUTC, 0).UTC()
-	}
-	if attempt.OccurredAtUTC > 0 {
-		occurredAt = time.Unix(attempt.OccurredAtUTC, 0).UTC()
-	}
-	if attempt.NextRetryAtUTC > 0 {
-		nextRetry = time.Unix(attempt.NextRetryAtUTC, 0).UTC()
-	}
 	return i.store.RecordOutboundAttempt(ctx, store.Outbound{
 		MessageRef: attempt.MessageRef, TaskID: attempt.TaskID,
 		Status: string(attempt.Status), Attempt: attempt.Attempt,
 		SMTPCode: attempt.SMTPCode, EnhancedStatus: attempt.EnhancedStatusCode,
 		RemoteResponse: attempt.RemoteResponse, Reason: attempt.Reason,
-		AcceptedAt: acceptedAt, OccurredAt: occurredAt, NextRetryAt: nextRetry,
+		AcceptedAt: unixTime(attempt.AcceptedAtUTC), OccurredAt: unixTime(attempt.OccurredAtUTC),
+		NextRetryAt: unixTime(attempt.NextRetryAtUTC),
 	})
 }
 
@@ -226,10 +219,7 @@ func (i *Ingester) handleAccepted(ctx context.Context, payload *webhook.InboundE
 	if payload.Verdicts != nil && (payload.Verdicts.IsSpam || payload.Verdicts.HasMalware) {
 		mailboxName = "Junk"
 	}
-	mailbox, err := i.store.MailboxByName(ctx, account.ID, mailboxName)
-	if errors.Is(err, store.ErrMailboxNotFound) {
-		mailbox, err = i.store.CreateMailbox(ctx, account.ID, mailboxName, specialUse(mailboxName))
-	}
+	mailbox, err := i.ensureMailbox(ctx, account.ID, mailboxName)
 	if err != nil {
 		return fmt.Errorf("select mailbox %q: %w", mailboxName, err)
 	}
@@ -239,25 +229,16 @@ func (i *Ingester) handleAccepted(ctx context.Context, payload *webhook.InboundE
 		internal = time.Unix(payload.AcceptedAtUTC, 0).UTC()
 	}
 	sum := sha256.Sum256(raw)
-	_, inserted, err := i.store.InsertMessage(ctx, store.MessageInput{
-		AccountID: account.ID, MailboxID: mailbox.ID,
-		Raw: raw, RawSHA256: hex.EncodeToString(sum[:]), StoreData: true,
-		Size: int64(len(raw)), InternalDate: internal,
-		MessageID: firstNonEmpty(parsed.MessageID, payload.Message.MessageID),
-		Subject:   firstNonEmpty(parsed.Subject, payload.Message.Subject),
-		From:      convertAddresses(parsed.From), To: convertAddresses(parsed.To),
-		Cc: convertAddresses(parsed.Cc), Bcc: convertAddresses(parsed.Bcc),
-		ReplyTo:   convertAddresses(parsed.ReplyTo),
-		InReplyTo: parsed.InReplyTo, References: parsed.References, SentAt: optionalTime(parsed.Date),
-		Headers: convertHeaders(parsed.Headers), MIMETree: parsed.MIMETree,
-		TaskID: payload.TaskID, IsSpam: mailboxName == "Junk",
-		Search: store.SearchContent{
-			Subject: parsed.Search.Subject, Sender: parsed.Search.Sender,
-			Recipients: parsed.Search.Recipients, Headers: parsed.Search.Headers,
-			Body: parsed.Search.Body, Attachments: parsed.Search.Attachments,
-		},
-		DedupeRaw: true,
-	})
+	input := mailmsg.Input(account.ID, mailbox.ID, raw, parsed)
+	input.RawSHA256 = hex.EncodeToString(sum[:])
+	input.StoreData = true
+	input.InternalDate = internal
+	input.MessageID = cmp.Or(parsed.MessageID, payload.Message.MessageID)
+	input.Subject = cmp.Or(parsed.Subject, payload.Message.Subject)
+	input.TaskID = payload.TaskID
+	input.IsSpam = mailboxName == "Junk"
+	input.DedupeRaw = true
+	_, inserted, err := i.store.InsertMessage(ctx, input)
 	if err != nil {
 		return fmt.Errorf("store inbound message for task %s: %w", payload.TaskID, err)
 	}
@@ -293,7 +274,7 @@ func (i *Ingester) handleAttempt(ctx context.Context, attempt *notify.AttemptEve
 		}
 		return nil
 	}
-	message, err := i.store.SetS3Key(ctx, firstNonEmpty(attempt.CorrelationID, attempt.TaskID), attempt.ObjectKey)
+	message, err := i.store.SetS3Key(ctx, cmp.Or(attempt.CorrelationID, attempt.TaskID), attempt.ObjectKey)
 	if err == nil {
 		i.log.Info("bound S3 object", "task", attempt.TaskID, "correlation", attempt.CorrelationID,
 			"object_key", attempt.ObjectKey, "message", message.ID)
@@ -370,31 +351,17 @@ func (i *Ingester) ingestS3Key(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	mailboxName := "INBOX"
-	mailbox, err := i.store.MailboxByName(ctx, account.ID, mailboxName)
-	if errors.Is(err, store.ErrMailboxNotFound) {
-		mailbox, err = i.store.CreateMailbox(ctx, account.ID, mailboxName, specialUse(mailboxName))
-	}
+	mailbox, err := i.ensureMailbox(ctx, account.ID, "INBOX")
 	if err != nil {
 		return err
 	}
-	_, inserted, err := i.store.InsertMessage(ctx, store.MessageInput{
-		AccountID: account.ID, MailboxID: mailbox.ID,
-		Raw: raw, RawSHA256: sha, Kind: "s3", S3Key: key,
-		Size: int64(len(raw)), InternalDate: time.Now().UTC(),
-		MessageID: parsed.MessageID, Subject: parsed.Subject,
-		From: convertAddresses(parsed.From), To: convertAddresses(parsed.To),
-		Cc: convertAddresses(parsed.Cc), Bcc: convertAddresses(parsed.Bcc),
-		ReplyTo:   convertAddresses(parsed.ReplyTo),
-		InReplyTo: parsed.InReplyTo, References: parsed.References, SentAt: optionalTime(parsed.Date),
-		Headers: convertHeaders(parsed.Headers), MIMETree: parsed.MIMETree,
-		Search: store.SearchContent{
-			Subject: parsed.Search.Subject, Sender: parsed.Search.Sender,
-			Recipients: parsed.Search.Recipients, Headers: parsed.Search.Headers,
-			Body: parsed.Search.Body, Attachments: parsed.Search.Attachments,
-		},
-		DedupeRaw: true,
-	})
+	input := mailmsg.Input(account.ID, mailbox.ID, raw, parsed)
+	input.RawSHA256 = sha
+	input.Kind = "s3"
+	input.S3Key = key
+	input.InternalDate = time.Now().UTC()
+	input.DedupeRaw = true
+	_, inserted, err := i.store.InsertMessage(ctx, input)
 	if err != nil {
 		return err
 	}
@@ -451,52 +418,17 @@ func (i *Ingester) reconcileOnce(ctx context.Context) error {
 	return nil
 }
 
-func convertAddresses(in []mailparse.Address) []store.Address {
-	out := make([]store.Address, 0, len(in))
-	for _, address := range in {
-		out = append(out, store.Address{Name: address.Name, Address: address.Address})
+func (i *Ingester) ensureMailbox(ctx context.Context, accountID int64, name string) (store.Mailbox, error) {
+	mailbox, err := i.store.MailboxByName(ctx, accountID, name)
+	if errors.Is(err, store.ErrMailboxNotFound) {
+		return i.store.CreateMailbox(ctx, accountID, name, store.SpecialUse(name))
 	}
-	return out
+	return mailbox, err
 }
 
-func convertHeaders(in []mailparse.Header) []store.Header {
-	out := make([]store.Header, 0, len(in))
-	for _, header := range in {
-		out = append(out, store.Header{Name: header.Name, Value: header.Value})
+func unixTime(seconds int64) time.Time {
+	if seconds <= 0 {
+		return time.Time{}
 	}
-	return out
-}
-
-func optionalTime(t time.Time) *time.Time {
-	if t.IsZero() {
-		return nil
-	}
-	t = t.UTC()
-	return &t
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func specialUse(name string) string {
-	switch strings.ToLower(name) {
-	case "junk":
-		return `\Junk`
-	case "sent":
-		return `\Sent`
-	case "drafts":
-		return `\Drafts`
-	case "trash":
-		return `\Trash`
-	case "archive":
-		return `\Archive`
-	default:
-		return ""
-	}
+	return time.Unix(seconds, 0).UTC()
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/synqronlabs/perch/internal/authlimit"
 	"github.com/synqronlabs/perch/internal/config"
 	"github.com/synqronlabs/perch/internal/netlimit"
+	"github.com/synqronlabs/perch/internal/netutil"
 	"github.com/synqronlabs/perch/internal/store"
 	"github.com/synqronlabs/raven/server"
 )
@@ -58,7 +59,7 @@ func (s *Server) Run(ctx context.Context, tlsConfig *tls.Config) error {
 		if spec.addr == "" {
 			continue
 		}
-		if tlsConfig == nil && (spec.tls || !isLoopback(spec.addr)) {
+		if tlsConfig == nil && (spec.tls || !netutil.IsLoopback(spec.addr)) {
 			return fmt.Errorf("submission listener %s requires TLS", spec.addr)
 		}
 		started++
@@ -66,7 +67,7 @@ func (s *Server) Run(ctx context.Context, tlsConfig *tls.Config) error {
 			Domain:             s.cfg.Hostname,
 			Addr:               spec.addr,
 			TLSConfig:          tlsConfig,
-			AllowInsecureAuth:  !spec.tls && isLoopback(spec.addr),
+			AllowInsecureAuth:  !spec.tls && netutil.IsLoopback(spec.addr),
 			MaxMessageBytes:    s.cfg.Limits.MaxMessageBytes,
 			MaxRecipients:      s.cfg.Limits.MaxRecipients,
 			MaxReceivedHeaders: 3,
@@ -129,19 +130,4 @@ func (l smtpLogger) Printf(format string, args ...any) {
 
 func (l smtpLogger) Println(args ...any) {
 	l.log.Warn(strings.TrimSpace(fmt.Sprint(args...)))
-}
-
-func isLoopback(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-	if host == "" {
-		return false
-	}
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
