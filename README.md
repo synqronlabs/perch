@@ -11,6 +11,38 @@ inside SQLite or in an S3 bucket written by mxRaven's `S3_STORE` action.
 - **Remote**: run it on a VPS. IMAP and submission use TLS, and raw messages are
   archived in S3 by mxRaven while SQLite keeps only metadata and search text.
 
+## Built on mxRaven
+
+Perch deliberately does not implement an MTA, DKIM/DMARC/ARC, IP reputation, or
+a spam engine. mxRaven provides the mail transport; perch is the mailbox layer on
+top of it.
+
+The mxRaven capabilities that shaped this project:
+
+- **One transport for both directions.** The submission listener accepts
+  outbound mail, and the MTA listener accepts inbound mail, so perch never runs
+  an SMTP MX or manages deliverability.
+- **Pull-based delivery through NAT.** The client notification stream over WSS
+  delivers accepted and attempt events without a public webhook endpoint,
+  ingress, or TLS certificate for inbound mail.
+- **Verified raw-message access.** Accepted events carry a short-lived, signed
+  `.eml` URL plus size and SHA-256, so perch can archive exactly the bytes
+  mxRaven processed.
+- **Durable S3 archival as a platform action.** `S3_STORE` writes raw messages
+  with deterministic mailbox/task keys, and its attempt events let perch bind
+  and evict local spool copies in real time. Bucket reconciliation covers missed
+  events.
+- **Policy at the edge.** SPF/DKIM/DMARC/ARC results, Rspamd verdicts, routing
+  rules, reject policies, and per-listener rate limits are configured in
+  mxRaven rather than reimplemented in Go.
+- **A usable control plane.** The admin SDK provisions domains, listeners, API
+  keys, inbound routes, notifications, storage integrations, and rate limits,
+  while listener API keys remain narrowly scoped to submission and streams.
+- **Spam/ham feedback that stays private.** The feedback service matches
+  submitted bytes against a SHA-256 ledger, so perch can train the filter
+  without retaining or uploading anything beyond the raw message the user
+  already has.
+
 ## What it does
 
 - IMAP4rev1 server with IDLE, UIDPLUS, MOVE, NAMESPACE, SPECIAL-USE,
