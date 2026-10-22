@@ -1,10 +1,10 @@
 # perch
 
-A small, single-binary IMAP mailbox service backed by [mxRaven](https://mxraven.com).
+A tiny, single-binary IMAP mailbox service backed by [mxRaven](https://mxraven.com).
 SQLite holds metadata, flags, and the full-text index; message bodies live either
 inside SQLite or in an S3 bucket written by mxRaven's `S3_STORE` action.
 
-`perch` is designed for two deployments:
+`perch` is designed for both the following deployment modes:
 
 - **Local**: run it on a laptop or home server. IMAP and submission bind to
   loopback; no inbound ports or public DNS are required.
@@ -13,9 +13,8 @@ inside SQLite or in an S3 bucket written by mxRaven's `S3_STORE` action.
 
 ## Built on mxRaven
 
-Perch deliberately does not implement an MTA, DKIM/DMARC/ARC, IP reputation, or
-a spam engine. mxRaven provides the mail transport; perch is the mailbox layer on
-top of it.
+Perch does not have to implement an MTA, DKIM/DMARC/ARC, IP reputation, or
+a spam engine.
 
 The mxRaven capabilities that shaped this project:
 
