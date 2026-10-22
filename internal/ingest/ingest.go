@@ -264,7 +264,8 @@ func (i *Ingester) handleAccepted(ctx context.Context, payload *webhook.InboundE
 	if inserted {
 		i.hub.Notify(mailbox.ID)
 		i.log.Info("stored inbound message", "task", payload.TaskID, "account", account.PrimaryAddress,
-			"mailbox", mailboxName, "bytes", len(raw))
+			"mailbox", mailboxName, "bytes", len(raw), "raw_sha256", payload.RawEmail.SHA256Hex,
+			"message_id", payload.Message.MessageID)
 	}
 	if i.cfg.Storage.Mode == config.StorageS3 && i.cfg.Storage.S3.SpoolMaxBytes > 0 {
 		if _, _, err := i.store.EnforceSpoolLimit(ctx, i.cfg.Storage.S3.SpoolMaxBytes); err != nil {
