@@ -331,6 +331,17 @@ user expunged. `perch reconcile` forces an immediate bucket scan.
 SQLite is not encrypted at rest. Use full-disk encryption for sensitive
 deployments.
 
+## License
+
+perch is released under the **MIT No Attribution (MIT-0)** license. See
+[`LICENSE`](LICENSE).
+
+Third-party modules linked into the binary retain their own licenses. Full
+license texts, Apache-2.0 NOTICE files, and embedded SQLite/libc notices are in
+[`third_party/licenses`](third_party/licenses) and indexed in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). Binary distributions should
+include both.
+
 ## Development
 
 ```sh
