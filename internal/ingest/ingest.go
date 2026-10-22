@@ -276,7 +276,13 @@ func (i *Ingester) handleAccepted(ctx context.Context, payload *webhook.InboundE
 }
 
 func (i *Ingester) handleAttempt(ctx context.Context, attempt *notify.AttemptEvent) error {
-	if attempt == nil || attempt.Channel != notify.ChannelS3 {
+	if attempt == nil {
+		return nil
+	}
+	i.log.Info("mxRaven attempt", "channel", attempt.Channel, "status", attempt.Status,
+		"task", attempt.TaskID, "correlation", attempt.CorrelationID, "object_key", attempt.ObjectKey,
+		"message_ref", attempt.MessageRef)
+	if attempt.Channel != notify.ChannelS3 {
 		return nil
 	}
 	if attempt.Status != webhook.StatusDelivered || attempt.ObjectKey == "" {
@@ -289,6 +295,8 @@ func (i *Ingester) handleAttempt(ctx context.Context, attempt *notify.AttemptEve
 	}
 	message, err := i.store.SetS3Key(ctx, firstNonEmpty(attempt.CorrelationID, attempt.TaskID), attempt.ObjectKey)
 	if err == nil {
+		i.log.Info("bound S3 object", "task", attempt.TaskID, "correlation", attempt.CorrelationID,
+			"object_key", attempt.ObjectKey, "message", message.ID)
 		if !i.cfg.Storage.S3.Spool {
 			if err := i.store.EvictLocalData(ctx, message.ID); err != nil {
 				i.log.Warn("evict local spool copy", "message", message.ID, "error", err)
