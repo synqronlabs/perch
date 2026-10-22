@@ -10,10 +10,12 @@ import (
 	"unicode"
 )
 
+const mailboxColumns = `id, account_id, name, uid_validity, uid_next, highest_modseq, subscribed, special_use, created_at`
+
 // ListMailboxes returns all mailboxes for an account ordered by name.
 func (s *Store) ListMailboxes(ctx context.Context, accountID int64) ([]Mailbox, error) {
 	rows, err := s.reader.QueryContext(ctx, `
-		SELECT id, account_id, name, uid_validity, uid_next, highest_modseq, subscribed, special_use, created_at
+		SELECT `+mailboxColumns+`
 		FROM mailboxes WHERE account_id = ? ORDER BY name`, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("list mailboxes: %w", err)
@@ -48,7 +50,7 @@ func scanMailbox(row rowScanner) (Mailbox, error) {
 func (s *Store) MailboxByName(ctx context.Context, accountID int64, name string) (Mailbox, error) {
 	name = canonicalMailboxName(name)
 	m, err := scanMailbox(s.reader.QueryRowContext(ctx, `
-		SELECT id, account_id, name, uid_validity, uid_next, highest_modseq, subscribed, special_use, created_at
+		SELECT `+mailboxColumns+`
 		FROM mailboxes WHERE account_id = ? AND name = ? COLLATE NOCASE`, accountID, name))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Mailbox{}, ErrMailboxNotFound
@@ -59,7 +61,7 @@ func (s *Store) MailboxByName(ctx context.Context, accountID int64, name string)
 // MailboxByID returns one mailbox by database identifier.
 func (s *Store) MailboxByID(ctx context.Context, id int64) (Mailbox, error) {
 	m, err := scanMailbox(s.reader.QueryRowContext(ctx, `
-		SELECT id, account_id, name, uid_validity, uid_next, highest_modseq, subscribed, special_use, created_at
+		SELECT `+mailboxColumns+`
 		FROM mailboxes WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Mailbox{}, ErrMailboxNotFound
@@ -87,15 +89,8 @@ func (s *Store) CreateMailbox(ctx context.Context, accountID int64, name, specia
 	if existing > 0 {
 		return Mailbox{}, fmt.Errorf("%w: mailbox %s", ErrDuplicate, name)
 	}
-	parts := strings.Split(name, "/")
-	for i := 0; i < len(parts)-1; i++ {
-		parent := strings.Join(parts[:i+1], "/")
-		if _, err := tx.ExecContext(ctx, `
-			INSERT OR IGNORE INTO mailboxes
-				(account_id, name, uid_validity, uid_next, highest_modseq, subscribed, special_use, created_at)
-			VALUES (?, ?, ?, 1, 1, 1, '', ?)`, accountID, parent, randomUIDValidity(), now); err != nil {
-			return Mailbox{}, fmt.Errorf("create parent mailbox %q: %w", parent, err)
-		}
+	if err := ensureParentMailboxes(ctx, tx, accountID, name, now); err != nil {
+		return Mailbox{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO mailboxes
@@ -103,16 +98,12 @@ func (s *Store) CreateMailbox(ctx context.Context, accountID int64, name, specia
 		VALUES (?, ?, ?, 1, 1, 1, ?, ?)`, accountID, name, randomUIDValidity(), specialUse, now); err != nil {
 		return Mailbox{}, fmt.Errorf("create mailbox %q: %w", name, err)
 	}
-	var m Mailbox
-	var created int64
-	err = tx.QueryRowContext(ctx, `
-		SELECT id, account_id, name, uid_validity, uid_next, highest_modseq, subscribed, special_use, created_at
-		FROM mailboxes WHERE account_id = ? AND name = ? COLLATE NOCASE`, accountID, name).
-		Scan(&m.ID, &m.AccountID, &m.Name, &m.UIDValidity, &m.UIDNext, &m.HighestModSeq, &m.Subscribed, &m.SpecialUse, &created)
+	m, err := scanMailbox(tx.QueryRowContext(ctx, `
+		SELECT `+mailboxColumns+`
+		FROM mailboxes WHERE account_id = ? AND name = ? COLLATE NOCASE`, accountID, name))
 	if err != nil {
 		return Mailbox{}, fmt.Errorf("read created mailbox: %w", err)
 	}
-	m.CreatedAt = time.Unix(created, 0).UTC()
 	if err := tx.Commit(); err != nil {
 		return Mailbox{}, fmt.Errorf("commit create mailbox: %w", err)
 	}
@@ -132,13 +123,9 @@ func (s *Store) DeleteMailbox(ctx context.Context, accountID int64, name string)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var id int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM mailboxes WHERE account_id = ? AND name = ? COLLATE NOCASE`, accountID, name).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrMailboxNotFound
-	}
+	id, err := mailboxIDByName(ctx, tx, accountID, name)
 	if err != nil {
-		return fmt.Errorf("lookup mailbox: %w", err)
+		return err
 	}
 	var children int
 	if err := tx.QueryRowContext(ctx, `
@@ -181,13 +168,9 @@ func (s *Store) RenameMailbox(ctx context.Context, accountID int64, oldName, new
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var id int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM mailboxes WHERE account_id = ? AND name = ? COLLATE NOCASE`, accountID, oldName).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrMailboxNotFound
-	}
+	id, err := mailboxIDByName(ctx, tx, accountID, oldName)
 	if err != nil {
-		return fmt.Errorf("lookup mailbox: %w", err)
+		return err
 	}
 	var exists int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM mailboxes WHERE account_id = ? AND name = ? COLLATE NOCASE`, accountID, newName).Scan(&exists); err != nil {
@@ -197,15 +180,8 @@ func (s *Store) RenameMailbox(ctx context.Context, accountID int64, oldName, new
 		return fmt.Errorf("%w: mailbox %s", ErrDuplicate, newName)
 	}
 	now := time.Now().UTC().Unix()
-	parts := strings.Split(newName, "/")
-	for i := 0; i < len(parts)-1; i++ {
-		parent := strings.Join(parts[:i+1], "/")
-		if _, err := tx.ExecContext(ctx, `
-			INSERT OR IGNORE INTO mailboxes
-				(account_id, name, uid_validity, uid_next, highest_modseq, subscribed, special_use, created_at)
-			VALUES (?, ?, ?, 1, 1, 1, '', ?)`, accountID, parent, randomUIDValidity(), now); err != nil {
-			return fmt.Errorf("create rename parent %q: %w", parent, err)
-		}
+	if err := ensureParentMailboxes(ctx, tx, accountID, newName, now); err != nil {
+		return err
 	}
 	// Rename descendants first so a destination that is a prefix of the source
 	// cannot collide with the source tree.
@@ -284,6 +260,32 @@ func (s *Store) Status(ctx context.Context, mailboxID int64) (MailboxStatus, err
 		}
 	}
 	return st, nil
+}
+
+func mailboxIDByName(ctx context.Context, tx *sql.Tx, accountID int64, name string) (int64, error) {
+	var id int64
+	err := tx.QueryRowContext(ctx, `SELECT id FROM mailboxes WHERE account_id = ? AND name = ? COLLATE NOCASE`, accountID, name).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrMailboxNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("lookup mailbox: %w", err)
+	}
+	return id, nil
+}
+
+func ensureParentMailboxes(ctx context.Context, tx *sql.Tx, accountID int64, name string, now int64) error {
+	parts := strings.Split(name, "/")
+	for i := 0; i < len(parts)-1; i++ {
+		parent := strings.Join(parts[:i+1], "/")
+		if _, err := tx.ExecContext(ctx, `
+			INSERT OR IGNORE INTO mailboxes
+				(account_id, name, uid_validity, uid_next, highest_modseq, subscribed, special_use, created_at)
+			VALUES (?, ?, ?, 1, 1, 1, '', ?)`, accountID, parent, randomUIDValidity(), now); err != nil {
+			return fmt.Errorf("create parent mailbox %q: %w", parent, err)
+		}
+	}
+	return nil
 }
 
 func deleteMessagesInMailbox(ctx context.Context, tx *sql.Tx, mailboxID int64) error {

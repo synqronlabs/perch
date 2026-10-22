@@ -112,13 +112,30 @@ type defaultMailbox struct {
 }
 
 func defaultMailboxes() []defaultMailbox {
-	return []defaultMailbox{
-		{name: "INBOX"},
-		{name: "Sent", specialUse: `\Sent`},
-		{name: "Drafts", specialUse: `\Drafts`},
-		{name: "Trash", specialUse: `\Trash`},
-		{name: "Junk", specialUse: `\Junk`},
-		{name: "Archive", specialUse: `\Archive`},
+	names := []string{"INBOX", "Sent", "Drafts", "Trash", "Junk", "Archive"}
+	mailboxes := make([]defaultMailbox, 0, len(names))
+	for _, name := range names {
+		mailboxes = append(mailboxes, defaultMailbox{name: name, specialUse: SpecialUse(name)})
+	}
+	return mailboxes
+}
+
+// SpecialUse returns the IMAP special-use attribute for a standard mailbox
+// name, or an empty string.
+func SpecialUse(name string) string {
+	switch strings.ToLower(name) {
+	case "sent":
+		return `\Sent`
+	case "drafts":
+		return `\Drafts`
+	case "trash":
+		return `\Trash`
+	case "junk":
+		return `\Junk`
+	case "archive":
+		return `\Archive`
+	default:
+		return ""
 	}
 }
 
@@ -172,7 +189,7 @@ func (s *Store) ResolveRecipient(ctx context.Context, address string) (Account, 
 	if !errors.Is(err, ErrNotFound) {
 		return Account{}, "", err
 	}
-	if base, ok := stripPlus(address); ok && base != address {
+	if base, ok := StripPlus(address); ok && base != address {
 		a, matched, err = s.resolveExact(ctx, base)
 		if err == nil {
 			return a, matched, nil
@@ -340,7 +357,8 @@ func NormalizeAddress(address string) (string, error) {
 	return strings.ToLower(strings.TrimSpace(parsed.Address)), nil
 }
 
-func stripPlus(address string) (string, bool) {
+// StripPlus removes a plus-addressing tag from an address local part.
+func StripPlus(address string) (string, bool) {
 	at := strings.LastIndexByte(address, '@')
 	if at < 0 {
 		return address, false

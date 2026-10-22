@@ -3,12 +3,12 @@ package imapd
 import (
 	"context"
 	"errors"
-	"net"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
+	"github.com/synqronlabs/perch/internal/netutil"
 	"github.com/synqronlabs/perch/internal/password"
 	"github.com/synqronlabs/perch/internal/store"
 )
@@ -104,19 +104,25 @@ func (s *session) loadSelected(m store.Mailbox, readOnly bool) (*selectedMailbox
 	if err != nil {
 		return nil, err
 	}
+	view, flags, keywords := mailboxView(states)
 	sel := &selectedMailbox{
 		mailbox: m, readOnly: readOnly,
-		view:     make([]uint32, 0, len(states)),
-		flags:    make(map[uint32]store.Flags, len(states)),
-		keywords: make(map[uint32][]string, len(states)),
-	}
-	for _, state := range states {
-		sel.view = append(sel.view, state.UID)
-		sel.flags[state.UID] = state.Flags
-		sel.keywords[state.UID] = state.Keywords
+		view: view, flags: flags, keywords: keywords,
 	}
 	sel.wake, sel.unsubscribe = s.srv.hub.Subscribe(m.ID)
 	return sel, nil
+}
+
+func mailboxView(states []store.MessageState) ([]uint32, map[uint32]store.Flags, map[uint32][]string) {
+	view := make([]uint32, 0, len(states))
+	flags := make(map[uint32]store.Flags, len(states))
+	keywords := make(map[uint32][]string, len(states))
+	for _, state := range states {
+		view = append(view, state.UID)
+		flags[state.UID] = state.Flags
+		keywords[state.UID] = state.Keywords
+	}
+	return view, flags, keywords
 }
 
 func (s *session) Unselect() error {
@@ -223,6 +229,7 @@ func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, 
 	if err != nil {
 		return err
 	}
+	hasChildren, subscribedChildren := mailboxTreeIndex(mailboxes)
 	for _, mailbox := range mailboxes {
 		if options != nil && options.SelectSubscribed && !mailbox.Subscribed {
 			continue
@@ -240,19 +247,14 @@ func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, 
 		if !matched {
 			continue
 		}
-		attrs := mailboxAttrs(mailbox, mailboxes)
+		name := strings.ToLower(mailbox.Name)
+		attrs := mailboxAttrs(mailbox, hasChildren[name])
 		data := &imap.ListData{Attrs: attrs, Delim: '/', Mailbox: mailbox.Name}
 		if options != nil && options.ReturnSubscribed && mailbox.Subscribed {
 			data.Attrs = append(data.Attrs, imap.MailboxAttrSubscribed)
 		}
 		if options != nil && options.ReturnChildren {
-			childSubscribed := false
-			for _, other := range mailboxes {
-				if strings.HasPrefix(strings.ToLower(other.Name), strings.ToLower(mailbox.Name)+"/") {
-					childSubscribed = childSubscribed || other.Subscribed
-				}
-			}
-			data.ChildInfo = &imap.ListDataChildInfo{Subscribed: childSubscribed}
+			data.ChildInfo = &imap.ListDataChildInfo{Subscribed: subscribedChildren[name]}
 		}
 		if options != nil && options.ReturnStatus != nil {
 			status, err := s.Status(mailbox.Name, options.ReturnStatus)
@@ -357,30 +359,48 @@ func (s *session) flagsFor(uid uint32) []imap.Flag {
 	return imapFlags(s.sel.flags[uid], s.sel.keywords[uid])
 }
 
+var systemFlagBits = []struct {
+	bit  store.Flags
+	flag imap.Flag
+}{
+	{store.FlagSeen, imap.FlagSeen},
+	{store.FlagAnswered, imap.FlagAnswered},
+	{store.FlagFlagged, imap.FlagFlagged},
+	{store.FlagDeleted, imap.FlagDeleted},
+	{store.FlagDraft, imap.FlagDraft},
+}
+
+func systemFlag(flag imap.Flag) (store.Flags, bool) {
+	for _, candidate := range systemFlagBits {
+		if strings.EqualFold(string(flag), string(candidate.flag)) {
+			return candidate.bit, true
+		}
+	}
+	return 0, false
+}
+
 func selectFlags() []imap.Flag {
-	return []imap.Flag{imap.FlagSeen, imap.FlagAnswered, imap.FlagFlagged, imap.FlagDeleted, imap.FlagDraft}
+	out := make([]imap.Flag, 0, len(systemFlagBits))
+	for _, candidate := range systemFlagBits {
+		out = append(out, candidate.flag)
+	}
+	return out
 }
 
 func permanentFlags() []imap.Flag {
-	return []imap.Flag{imap.FlagSeen, imap.FlagAnswered, imap.FlagFlagged, imap.FlagDeleted, imap.FlagDraft, imap.FlagWildcard}
+	out := make([]imap.Flag, 0, len(systemFlagBits)+1)
+	for _, candidate := range systemFlagBits {
+		out = append(out, candidate.flag)
+	}
+	return append(out, imap.FlagWildcard)
 }
 
 func imapFlags(flags store.Flags, keywords []string) []imap.Flag {
-	out := make([]imap.Flag, 0, 5+len(keywords))
-	if flags.Has(store.FlagSeen) {
-		out = append(out, imap.FlagSeen)
-	}
-	if flags.Has(store.FlagAnswered) {
-		out = append(out, imap.FlagAnswered)
-	}
-	if flags.Has(store.FlagFlagged) {
-		out = append(out, imap.FlagFlagged)
-	}
-	if flags.Has(store.FlagDeleted) {
-		out = append(out, imap.FlagDeleted)
-	}
-	if flags.Has(store.FlagDraft) {
-		out = append(out, imap.FlagDraft)
+	out := make([]imap.Flag, 0, len(systemFlagBits)+len(keywords))
+	for _, candidate := range systemFlagBits {
+		if flags.Has(candidate.bit) {
+			out = append(out, candidate.flag)
+		}
 	}
 	for _, keyword := range keywords {
 		out = append(out, imap.Flag(keyword))
@@ -388,20 +408,31 @@ func imapFlags(flags store.Flags, keywords []string) []imap.Flag {
 	return out
 }
 
-func mailboxAttrs(mailbox store.Mailbox, all []store.Mailbox) []imap.MailboxAttr {
-	var attrs []imap.MailboxAttr
-	hasChildren := false
-	prefix := strings.ToLower(mailbox.Name) + "/"
-	for _, other := range all {
-		if strings.HasPrefix(strings.ToLower(other.Name), prefix) {
-			hasChildren = true
-			break
+func mailboxTreeIndex(mailboxes []store.Mailbox) (hasChildren, subscribedChildren map[string]bool) {
+	hasChildren = make(map[string]bool, len(mailboxes))
+	subscribedChildren = make(map[string]bool, len(mailboxes))
+	for _, mailbox := range mailboxes {
+		name := strings.ToLower(mailbox.Name)
+		for {
+			index := strings.LastIndexByte(name, '/')
+			if index < 0 {
+				break
+			}
+			parent := name[:index]
+			hasChildren[parent] = true
+			if mailbox.Subscribed {
+				subscribedChildren[parent] = true
+			}
+			name = parent
 		}
 	}
+	return hasChildren, subscribedChildren
+}
+
+func mailboxAttrs(mailbox store.Mailbox, hasChildren bool) []imap.MailboxAttr {
+	attrs := []imap.MailboxAttr{imap.MailboxAttrHasNoChildren}
 	if hasChildren {
-		attrs = append(attrs, imap.MailboxAttrHasChildren)
-	} else {
-		attrs = append(attrs, imap.MailboxAttrHasNoChildren)
+		attrs[0] = imap.MailboxAttrHasChildren
 	}
 	if mailbox.SpecialUse != "" {
 		attrs = append(attrs, imap.MailboxAttr(mailbox.SpecialUse))
@@ -428,11 +459,7 @@ func remoteAddr(conn *imapserver.Conn) string {
 }
 
 func remoteHost(conn *imapserver.Conn) string {
-	addr := remoteAddr(conn)
-	if host, _, err := net.SplitHostPort(addr); err == nil {
-		return host
-	}
-	return addr
+	return netutil.Host(remoteAddr(conn))
 }
 
 // resolveUIDs expands a NumSet against the selected mailbox view. Sequence
@@ -445,18 +472,8 @@ func (s *session) resolveUIDs(set imap.NumSet) []uint32 {
 	case imap.SeqSet:
 		var out []uint32
 		for _, r := range value {
-			start, stop := r.Start, r.Stop
-			if start == 0 {
-				start = 1
-			}
-			if stop == 0 || stop > uint32(len(s.sel.view)) {
-				stop = uint32(len(s.sel.view))
-			}
-			for n := start; n <= stop && n >= start; n++ {
+			for _, n := range expandRange(r.Start, r.Stop, uint32(len(s.sel.view))) {
 				out = append(out, s.sel.view[n-1])
-				if n == ^uint32(0) {
-					break
-				}
 			}
 		}
 		return uniqueUIDs(out)
@@ -467,19 +484,7 @@ func (s *session) resolveUIDs(set imap.NumSet) []uint32 {
 		}
 		var out []uint32
 		for _, r := range value {
-			start, stop := uint32(r.Start), uint32(r.Stop)
-			if start == 0 {
-				start = 1
-			}
-			if stop == 0 || stop > max {
-				stop = max
-			}
-			for n := start; n <= stop && n >= start; n++ {
-				out = append(out, n)
-				if n == ^uint32(0) {
-					break
-				}
-			}
+			out = append(out, expandRange(uint32(r.Start), uint32(r.Stop), max)...)
 		}
 		return uniqueUIDs(out)
 	default:
@@ -487,18 +492,32 @@ func (s *session) resolveUIDs(set imap.NumSet) []uint32 {
 	}
 }
 
+func expandRange(start, stop, max uint32) []uint32 {
+	if start == 0 {
+		start = 1
+	}
+	if stop == 0 || stop > max {
+		stop = max
+	}
+	if start > stop {
+		return nil
+	}
+	out := make([]uint32, 0, stop-start+1)
+	for n := start; ; n++ {
+		out = append(out, n)
+		if n == stop || n == ^uint32(0) {
+			break
+		}
+	}
+	return out
+}
+
 func uniqueUIDs(in []uint32) []uint32 {
 	if len(in) < 2 {
 		return in
 	}
-	sort.Slice(in, func(i, j int) bool { return in[i] < in[j] })
-	out := in[:1]
-	for _, uid := range in[1:] {
-		if uid != out[len(out)-1] {
-			out = append(out, uid)
-		}
-	}
-	return out
+	slices.Sort(in)
+	return slices.Compact(in)
 }
 
 func uidSet(uids []uint32) imap.UIDSet {

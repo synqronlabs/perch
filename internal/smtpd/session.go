@@ -5,12 +5,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"net/mail"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/synqronlabs/perch/internal/netutil"
 	"github.com/synqronlabs/perch/internal/password"
 	"github.com/synqronlabs/perch/internal/store"
 	"github.com/synqronlabs/raven/client"
@@ -271,7 +271,7 @@ func (s *session) authorizedSender(address string) (bool, error) {
 		if strings.EqualFold(allowed, address) {
 			return true, nil
 		}
-		if base, ok := stripPlus(address); ok && strings.EqualFold(allowed, base) {
+		if base, ok := store.StripPlus(address); ok && strings.EqualFold(allowed, base) {
 			return true, nil
 		}
 	}
@@ -405,19 +405,6 @@ func stripGeneratedReceived(headers []byte) []byte {
 	}
 }
 
-func stripPlus(address string) (string, bool) {
-	at := strings.LastIndexByte(address, '@')
-	if at < 0 {
-		return address, false
-	}
-	local := address[:at]
-	plus := strings.LastIndexByte(local, '+')
-	if plus < 0 {
-		return address, false
-	}
-	return local[:plus] + address[at:], true
-}
-
 func remoteAddr(conn *server.Conn) string {
 	if conn == nil || conn.RemoteAddr() == nil {
 		return ""
@@ -426,9 +413,5 @@ func remoteAddr(conn *server.Conn) string {
 }
 
 func remoteHost(conn *server.Conn) string {
-	addr := remoteAddr(conn)
-	if host, _, err := net.SplitHostPort(addr); err == nil {
-		return host
-	}
-	return addr
+	return netutil.Host(remoteAddr(conn))
 }

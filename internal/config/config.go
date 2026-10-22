@@ -33,7 +33,6 @@ type Config struct {
 	TLS      TLSConfig     `yaml:"tls"`
 	Storage  StorageConfig `yaml:"storage"`
 	MXRaVen  MXRaVenConfig `yaml:"mxraven"`
-	Control  ControlConfig `yaml:"control_plane"`
 	Limits   LimitsConfig  `yaml:"limits"`
 	Setup    SetupConfig   `yaml:"setup"`
 }
@@ -132,24 +131,6 @@ func (l ListenerConfig) Secret() string {
 		}
 	}
 	return l.KeySecret
-}
-
-// ControlConfig is used only by the setup wizard.
-type ControlConfig struct {
-	BaseURL  string `yaml:"base_url"`
-	Tenant   string `yaml:"tenant"`
-	Token    string `yaml:"token"`
-	TokenEnv string `yaml:"token_env"`
-}
-
-// TokenValue returns the control-plane token from the environment when set.
-func (c ControlConfig) TokenValue() string {
-	if c.TokenEnv != "" {
-		if value := os.Getenv(c.TokenEnv); value != "" {
-			return value
-		}
-	}
-	return c.Token
 }
 
 // LimitsConfig bounds resource use.

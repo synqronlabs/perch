@@ -107,24 +107,6 @@ func (s *S3) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-// Head reports whether an object exists and its size.
-func (s *S3) Head(ctx context.Context, key string) (int64, error) {
-	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-	})
-	if err != nil {
-		if isNotFound(err) {
-			return 0, ErrObjectNotFound
-		}
-		return 0, fmt.Errorf("head s3 object %q: %w", key, err)
-	}
-	if out.ContentLength == nil {
-		return 0, nil
-	}
-	return *out.ContentLength, nil
-}
-
 // List returns every object under prefix.
 func (s *S3) List(ctx context.Context, prefix string) ([]Object, error) {
 	fullPrefix := s.prefix + strings.TrimPrefix(prefix, "/")
@@ -163,12 +145,6 @@ func (s *S3) Ping(ctx context.Context) error {
 	}
 	return nil
 }
-
-// Bucket returns the configured bucket name.
-func (s *S3) Bucket() string { return s.bucket }
-
-// Prefix returns the configured key prefix.
-func (s *S3) Prefix() string { return s.prefix }
 
 func isNotFound(err error) bool {
 	var noSuchKey *s3types.NoSuchKey

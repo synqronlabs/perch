@@ -76,8 +76,14 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	if strings.TrimSpace(opts.Domain) == "" {
 		return nil, errors.New("provision: mail domain is required")
 	}
-	inboundDomain := firstNonEmpty(opts.InboundDomain, opts.Domain)
-	sendingDomain := firstNonEmpty(opts.SendingDomain, opts.Domain)
+	inboundDomain := opts.InboundDomain
+	if strings.TrimSpace(inboundDomain) == "" {
+		inboundDomain = opts.Domain
+	}
+	sendingDomain := opts.SendingDomain
+	if strings.TrimSpace(sendingDomain) == "" {
+		sendingDomain = opts.Domain
+	}
 	cfg := config.Default()
 	if opts.Storage.Mode == "" {
 		opts.Storage.Mode = config.StorageSQLite
@@ -368,15 +374,6 @@ func dedupeRecords(in []Record) []Record {
 
 func storageRef(_ config.S3Config, domain string) string {
 	return "perch-" + strings.ReplaceAll(domain, ".", "-")
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 // WaitForDNS polls mxRaven until the sending domain and inbound route are

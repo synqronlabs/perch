@@ -12,6 +12,7 @@ require (
 	github.com/klauspost/compress v1.20.3
 	github.com/synqronlabs/mxraven-go v0.9.0
 	github.com/synqronlabs/raven v1.10.0
+	github.com/urfave/cli/v3 v3.14.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.60.0
 	golang.org/x/term v0.47.0
