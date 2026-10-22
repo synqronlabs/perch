@@ -1,216 +1,88 @@
 # perch
 
-A tiny, single-binary IMAP mailbox service backed by [mxRaven](https://mxraven.com).
-SQLite holds metadata, flags, and the full-text index; message bodies live either
-inside SQLite or in an S3 bucket written by mxRaven's `S3_STORE` action.
+Run your own IMAP and SMTP mail server on a homelab, NAS, Raspberry Pi, or spare PC with **virtually unlimited mailbox storage**, **no public IP**, **no port forwarding or tunnels**, and **none of the usual mail server complexity**.
 
-`perch` is designed for both the following deployment modes:
+`perch` is a tiny, single-binary mailbox server backed by [mxRaven](https://mxraven.com). Because mxRaven handles inbound MX, outbound delivery, SPF/DKIM/DMARC, IP reputation, and spam filtering at the edge, your hardware only needs outbound internet access and disk space (or an S3 bucket).
 
-- **Local**: run it on a laptop or home server. IMAP and submission bind to
-  loopback; no inbound ports or public DNS are required.
-- **Remote**: run it on a VPS. IMAP and submission use TLS, and raw messages are
-  archived in S3 by mxRaven while SQLite keeps only metadata and search text.
+- **No public IP, port forwarding, or tunnels required.** Inbound mail is pulled over an outbound WebSocket stream from mxRaven, and outbound mail is relayed over standard authenticated submission. Your server can sit behind residential NAT or CGNAT.
+- **Virtually unlimited mailbox size.** Store messages locally in SQLite (zstd-compressed and deduplicated) on cheap local drives, or offload raw `.eml` files to S3/R2 while keeping fast metadata and full-text search local.
+- **Runs on old or minimal hardware.** Single static Go binary (CGO-free) with embedded SQLite and FTS5 full-text search.
+- **Zero MTA maintenance.** No Postfix, Dovecot, Rspamd, DKIM signing daemons, or IP warm-up to manage. Moving messages to or from `Junk` automatically trains mxRaven's spam filter.
+- **Run locally or remotely.** Bind to `127.0.0.1` or your LAN on a homelab, or expose it on a VPS with built-in Let's Encrypt (ACME) TLS.
 
-## Built on mxRaven
+## Install
 
-Perch does not have to implement an MTA, DKIM/DMARC/ARC, IP reputation, or
-a spam engine.
-
-The mxRaven capabilities that shaped this project:
-
-- **One transport for both directions.** The submission listener accepts
-  outbound mail, and the MTA listener accepts inbound mail, so perch never runs
-  an SMTP MX or manages deliverability.
-- **Pull-based delivery through NAT.** The client notification stream over WSS
-  delivers accepted and attempt events without a public webhook endpoint,
-  ingress, or TLS certificate for inbound mail.
-- **Verified raw-message access.** Accepted events carry a short-lived, signed
-  `.eml` URL plus size and SHA-256, so perch can archive exactly the bytes
-  mxRaven processed.
-- **Durable S3 archival as a platform action.** `S3_STORE` writes raw messages
-  with deterministic mailbox/task keys, and its attempt events let perch bind
-  and evict local spool copies in real time. Bucket reconciliation covers missed
-  events.
-- **Policy at the edge.** SPF/DKIM/DMARC/ARC results, Rspamd verdicts, routing
-  rules, reject policies, and per-listener rate limits are configured in
-  mxRaven rather than reimplemented in Go.
-- **A usable control plane.** The admin SDK provisions domains, listeners, API
-  keys, inbound routes, notifications, storage integrations, and rate limits,
-  while listener API keys remain narrowly scoped to submission and streams.
-- **Spam/ham feedback that stays private.** The feedback service matches
-  submitted bytes against a SHA-256 ledger, so perch can train the filter
-  without retaining or uploading anything beyond the raw message the user
-  already has.
-
-## What it does
-
-- IMAP4rev1 server with IDLE, UIDPLUS, MOVE, NAMESPACE, SPECIAL-USE,
-  LIST-EXTENDED, LIST-STATUS, STATUS=SIZE, ESEARCH, LITERAL+, SASL-IR, and
-  APPENDLIMIT.
-- Full-text search over subject, addresses, headers, body, and attachment names
-  using SQLite FTS5.
-- Pull-based inbound delivery through mxRaven's client notification stream. No
-  webhook endpoint or public ingress is required.
-- Streaming SMTP submission relay to mxRaven using the first-party
-  [`raven`](https://github.com/synqronlabs/raven) server and client. Messages are
-  relayed as the client sends them; perch does not spool outbound mail.
-- Optional S3 archive mode using mxRaven `S3_STORE`, with bucket reconciliation
-  to recover messages whose notification events were missed.
-- Argon2id passwords, mailbox aliases, plus-addressing, catch-all domains, spam
-  routing to `Junk`, and per-account IMAP namespaces.
-- Built-in mxRaven setup wizard with optional DNS verification wait,
-  authentication-aware MTA rules, Rspamd scanning, and per-listener rate limits.
-- Spam/ham feedback: `$Junk` and `$NotJunk` keyword changes are submitted to
-  mxRaven's feedback service using the exact stored `.eml` bytes.
-- Bounded connection count, ingest concurrency, blob cache, and S3 spool.
-
-## Build
-
-Requires Go 1.26.4 or later.
+Requires Go 1.26.4 or later (CGO-free build):
 
 ```sh
 go build -o perch ./cmd/perch
 ```
 
-The build is CGO-free. `modernc.org/sqlite` includes FTS5.
+## Quickstart (Homelab / Local Hardware)
 
-## Local quickstart
+### 1. Provision mxRaven and generate config
+
+With an [mxRaven](https://mxraven.com) API token, `perch setup` automatically configures your domain, inbound route, submission listener, spam/auth rules, and writes `perch.yaml`:
 
 ```sh
-./perch init \
-  --data-dir ~/.local/share/perch \
-  --hostname localhost \
-  --email you@example.com \
-  --name "You"
+export MXRAVEN_API_TOKEN=...
 
+./perch setup \
+  --workspace my-workspace \
+  --domain example.com \
+  --hostname localhost
+```
+
+Publish the DNS records printed by the wizard (or pass `--wait` to wait until DNS verifies).
+
+### 2. Create an account and start the server
+
+```sh
+./perch account add --config ~/.local/share/perch/perch.yaml --email you@example.com
 ./perch serve --config ~/.local/share/perch/perch.yaml
 ```
 
-`init` prompts for the account password if `--password` is omitted. Then point
-Thunderbird or another IMAP client at:
+> Want to test locally before connecting mxRaven? Run `./perch init --data-dir ~/.local/share/perch --hostname localhost --email you@example.com` instead.
+
+### 3. Connect your mail client
+
+Point Thunderbird, Apple Mail, or any IMAP client to:
 
 | Setting | Value |
 | --- | --- |
-| IMAP server | `127.0.0.1` |
-| IMAP port | `1143` |
-| IMAP security | none (loopback only) |
-| SMTP server | `127.0.0.1` |
-| SMTP port | `1587` |
-| SMTP security | none (loopback only) |
+| IMAP | `127.0.0.1:1143` (plaintext on loopback) |
+| SMTP | `127.0.0.1:1587` (plaintext on loopback) |
 | Username | `you@example.com` |
-| Password | the account password |
+| Password | your account password |
 
-For a local encrypted setup, run `perch init --self-signed`. This generates a
-certificate under `<data-dir>/tls/` and enables IMAPS on `127.0.0.1:1993` and
-SMTPS on `127.0.0.1:1465`. Trust the generated certificate in the client first.
+To connect from other devices on your LAN, generate a self-signed certificate with `perch init --self-signed` (IMAPS on `1993`, SMTPS on `1465`) or provide your own TLS certificate via `--tls-cert` and `--tls-key`. Off-loopback connections always require TLS.
 
-### Connecting mxRaven
+## Archival with S3
 
-You can create the mxRaven resources manually or use the wizard:
+If you want bottomless cloud storage, enable S3 mode. mxRaven writes incoming `.eml` files directly to your bucket via `S3_STORE`, and `perch` reconciles the bucket automatically:
 
 ```sh
 export MXRAVEN_API_TOKEN=...
-./perch setup \
-  --workspace acme-prod \
-  --domain example.com \
-  --hostname mail.example.com
-```
-
-The wizard creates or reuses:
-
-- the sending domain,
-- an MTA listener with terminal action `DROP`,
-- an inbound route,
-- client notifications and an MTA API key,
-- a submission listener, sending-domain policy, and API key,
-- optionally an S3 integration and `S3_STORE` routing rule.
-
-It prints the DNS records you must publish and writes `perch.yaml`. Use
-`--dry-run` to inspect the plan first.
-
-Then create the first local account and start the service:
-
-```sh
-./perch account add --config <path>/perch.yaml --email you@example.com
-./perch serve --config <path>/perch.yaml
-```
-
-## Remote deployment with TLS and S3
-
-A typical remote invocation:
-
-```sh
 export PERCH_S3_SECRET_KEY=...
-export MXRAVEN_API_TOKEN=...
 
 ./perch setup \
-  --workspace acme-prod \
+  --workspace my-workspace \
   --domain example.com \
   --hostname mail.example.com \
   --storage s3 \
   --s3-bucket my-mail-archive \
   --s3-region auto \
   --s3-endpoint https://<account>.r2.cloudflarestorage.com \
-  --s3-access-key <read-only-key> \
-  --public \
-  --acme-email admin@example.com \
-  --acme-domain mail.example.com \
-  --wait
+  --s3-access-key <access-key>
 ```
 
-`--public` sets the standard ports:
-
-| Service | Port |
-| --- | --- |
-| IMAP STARTTLS | `143` |
-| IMAPS | `993` |
-| SMTP submission STARTTLS | `587` |
-| SMTPS | `465` |
-
-You can use `--tls-cert` and `--tls-key` instead of ACME. ACME uses HTTP-01 on
-port 80. `--wait` polls mxRaven until the sending domain and inbound route are
-verified; use `--wait-timeout` and `--wait-interval` to tune it.
-
-Authentication and inbound policy can be configured at setup time:
+To expose `perch` directly on a public VPS with standard ports (`143`/`993`/`587`/`465`) and automatic Let's Encrypt certificates, add:
 
 ```sh
---auth-policy reject-dmarc-fail   # none | reject-dmarc-fail | reject-spf-fail | reject-unauthenticated
---rspamd                          # default true
---reject-malware                  # default true
---reject-high-confidence-spam     # optional
---mta-message-rate 60 --mta-recipient-rate 120 --mta-task-rate 60 --mta-burst 30 --mta-concurrency 10
+  --public \
+  --acme-email admin@example.com \
+  --acme-domain mail.example.com
 ```
-
-The reject policies create mxRaven MTA rules using `authentication.*` and
-`verdicts.*` expression facts. Perch still routes Rspamd spam verdicts to
-`Junk`.
-
-### S3 mode
-
-In S3 mode, mxRaven writes the raw `.eml` with the `S3_STORE` action. The object
-key template must be bucket-relative, identify the recipient with `{{.mailbox.*}}`,
-include `{{.task.id}}`, and end in `.eml`; the wizard writes:
-
-```text
-perch/{{.mailbox.address}}/{{.task.id}}.eml
-```
-
-Perch needs `s3:GetObject`, `s3:HeadObject`, and `s3:ListBucket`. The mxRaven
-storage integration needs write access. The setup wizard uses the same key for
-both; for a manual deployment, give Perch a read-only key while mxRaven keeps the
-write key.
-
-On ingest, perch temporarily keeps a local copy so the message is immediately
-readable, then evicts it after the S3 attempt confirms the object (unless
-`storage.s3.spool` is enabled). A periodic reconciler lists the bucket and
-indexes objects whose notification events were missed.
-
-### Notification retention
-
-mxRaven's client notification stream retains events for **24 hours**, and raw
-message tokens live for about 25 hours. In SQLite-only mode, a perch instance
-that is offline longer than that can miss mail. Run it as a service, and use S3
-mode with reconciliation when long outages are possible.
 
 ## Configuration
 
@@ -282,67 +154,31 @@ Secrets can be inline (protected by file permissions) or referenced through
 environment variables. The control-plane token is used only by `perch setup`
 and is never written to the config.
 
-## CLI
+## CLI Reference
 
 ```text
-perch init       create a local configuration and optional first account
-perch setup      create mxRaven domains, listeners, keys, routes, and S3 rule
-perch serve      run IMAP, submission, and the notification consumer
-perch account    add | list | passwd | disable | enable
-perch alias      add | remove | list
-perch mailbox    list
-perch doctor     check the database, FTS5, TLS, S3, and mxRaven connectivity
-perch backup     write a consistent SQLite backup
-perch version
+perch init        create a local configuration and optional first account
+perch setup       provision mxRaven domain, listeners, keys, routes, and S3 rule
+perch serve       run IMAP, submission, and the mxRaven notification consumer
+perch account     add | list | passwd | disable | enable
+perch alias       add | remove | list
+perch mailbox     list
+perch doctor      verify SQLite, FTS5, TLS, DNS, S3, and mxRaven connectivity
+perch reconcile   force an immediate S3 bucket scan
+perch gc          clean up orphaned local blobs and enforce S3 spool limits
+perch backup      write a consistent SQLite backup
+perch version     print version
 ```
 
-`perch doctor` checks SQLite integrity, FTS5 availability, account/dead-letter
-and outbound counts, configured limits, certificate expiry, S3 bucket/list
-access and spool size, MX/DMARC DNS records, and mxRaven
-notification/submission connectivity.
+## Features at a Glance
 
-`perch gc` removes orphaned local blobs, enforces the S3 spool budget, and can
-purge old dead letters. `--s3-delete` also removes S3 objects for messages the
-user expunged. `perch reconcile` forces an immediate bucket scan.
-
-## Storage and search
-
-- SQLite runs in WAL mode with a single writer connection and a small reader
-  pool.
-- Local raw messages are zstd-compressed and content-addressed by SHA-256.
-- Copies share the same blob; refcounts decide when local data is deleted.
-- The FTS index is an external-content FTS5 table using the `unicode61`
-  tokenizer. IMAP `TEXT`/`BODY` are substring semantics, so FTS is used as a
-  candidate prefilter and the exact match is verified in Go.
-- Spam and malware verdicts from mxRaven route messages to `Junk`.
-
-## Security
-
-- IMAP and submission authentication use Argon2id hashes.
-- Plaintext authentication is allowed only on loopback.
-- Off-loopback listeners refuse to start without TLS.
-- Submission requires authentication and restricts `From`/`MAIL FROM` to the
-  account's addresses and aliases.
-- The IMAP server never opens inbound SMTP; mxRaven is the MX.
-- Mailbox names are validated against path traversal and control characters.
-- All SQL is parameterized; the FTS query is quoted.
-- Raw-message access tokens and API secrets are never logged.
-
-SQLite is not encrypted at rest. Use full-disk encryption for sensitive
-deployments.
+- **Standard IMAP4rev1**: `IDLE`, `UIDPLUS`, `MOVE`, `NAMESPACE`, `SPECIAL-USE`, `LIST-EXTENDED`, `LIST-STATUS`, `STATUS=SIZE`, `ESEARCH`, `LITERAL+`, `SASL-IR`, `APPENDLIMIT`.
+- **Full-text search**: SQLite FTS5 across subject, addresses, headers, body, and attachment names.
+- **Aliases & catch-all**: Per-account aliases, `user+tag@domain` plus-addressing, and catch-all domains.
+- **Inbound policy**: Configurable SPF/DMARC rejection, malware rejection, Rspamd routing to `Junk`, and listener rate limits via `perch setup` flags.
+- **Secure**: Argon2id password hashes, TLS required off-loopback, authenticated sender enforcement, and zero inbound SMTP ports.
+- **Private**: mxRaven never persists your emails. All your emails remain with you on your S3 bucket or local disk.
 
 ## License
 
-perch is released under the **MIT No Attribution (MIT-0)** license. See
-[`LICENSE`](LICENSE).
-
-## Development
-
-```sh
-go test ./...
-go test -race ./...
-go vet ./...
-```
-
-The mxRaven SDK is pinned to `github.com/synqronlabs/mxraven-go v0.9.0`.
-Raven is pinned to `github.com/synqronlabs/raven v1.10.0`.
+Released under the **MIT No Attribution (MIT-0)** license. See [`LICENSE`](LICENSE).
