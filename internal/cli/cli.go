@@ -18,8 +18,9 @@ import (
 	"golang.org/x/term"
 )
 
-// Version is the user-visible build version.
-const Version = "0.1.0-dev"
+// Version is the user-visible build version. Release builds override it with
+// -ldflags "-X github.com/synqronlabs/perch/internal/cli.Version=<version>".
+var Version = "0.1.0-dev"
 
 // Run executes a subcommand and returns a process exit code.
 func Run(args []string) int {

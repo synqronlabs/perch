@@ -12,10 +12,20 @@ Run your own IMAP and SMTP mail server on a homelab, NAS, Raspberry Pi, or spare
 
 ## Install
 
-Requires Go 1.26.4 or later (CGO-free build):
+Prebuilt binaries for Linux, macOS, and Windows are published on the
+[releases page](https://github.com/synqronlabs/perch/releases). Every release
+includes SHA-256 checksums, SBOMs, a keyless cosign signature, and GitHub build
+provenance; see [RELEASING.md](RELEASING.md#verifying-a-release).
 
 ```sh
-go build -o perch ./cmd/perch
+tar -xzf perch_<version>_linux_amd64.tar.gz
+sudo install -m 0755 perch_<version>_linux_amd64/perch /usr/local/bin/perch
+```
+
+Or build from source. Requires Go 1.26.4 or later (CGO-free build):
+
+```sh
+CGO_ENABLED=0 go build -trimpath -o perch ./cmd/perch
 ```
 
 For a long-running Linux deployment, see [Run as a systemd
