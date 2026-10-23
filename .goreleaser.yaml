@@ -72,10 +72,20 @@ archives:
       {{- with .Arm }}v{{ . }}{{ end }}
     wrap_in_directory: true
     builds_info:
-      mtime: "{{ .CommitTimestamp }}"
+      owner: root
+      group: root
+      mtime: "{{ .CommitDate }}"
     files:
-      - LICENSE
-      - README.md
+      - src: LICENSE
+        info:
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
 
 checksum:
   name_template: checksums.txt
