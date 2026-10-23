@@ -1,0 +1,172 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+#
+# GoReleaser configuration for perch.
+#
+# Validate locally:            goreleaser check
+# Build without publishing:    make snapshot
+#
+# Releases are cut by .github/workflows/release.yml when a v* tag is pushed.
+
+version: 2
+
+project_name: perch
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: perch
+    main: ./cmd/perch
+    binary: perch
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+      - "386"
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      # Not supported by Go, or intentionally not shipped.
+      - goos: darwin
+        goarch: arm
+      - goos: darwin
+        goarch: "386"
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: "386"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/synqronlabs/perch/internal/cli.Version={{ .Version }}
+    # Reproducible builds: use the commit time, not the build time.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+gomod:
+  proxy: true
+
+source:
+  enabled: true
+
+archives:
+  - id: perch
+    ids:
+      - perch
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+      {{- with .Arm }}v{{ . }}{{ end }}
+    wrap_in_directory: true
+    builds_info:
+      mtime: "{{ .CommitTimestamp }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# SBOMs are generated for every archive and the source tarball. The release
+# workflow installs Syft, which GoReleaser invokes to create them.
+sboms:
+  - id: archive
+    artifacts: archive
+  - id: source
+    artifacts: source
+
+# Keyless signing with Sigstore. Only the checksum file needs a signature:
+# every archive and SBOM is listed in it.
+signs:
+  - id: checksums
+    cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  abbrev: 7
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?!?:'
+      order: 0
+    - title: Bug fixes
+      regexp: '^fix(\(.+\))?!?:'
+      order: 1
+    - title: Performance
+      regexp: '^perf(\(.+\))?!?:'
+      order: 2
+    - title: Refactoring
+      regexp: '^refactor(\(.+\))?!?:'
+      order: 3
+    - title: Documentation
+      regexp: '^docs(\(.+\))?!?:'
+      order: 4
+    - title: Other changes
+      order: 999
+  filters:
+    exclude:
+      - '^build(\(.+\))?!?:'
+      - '^chore(\(.+\))?!?:'
+      - '^ci(\(.+\))?!?:'
+      - '^style(\(.+\))?!?:'
+      - '^test(\(.+\))?!?:'
+      - '^Merge pull request'
+      - '^Merge branch'
+
+release:
+  github:
+    owner: synqronlabs
+    name: perch
+  name_template: "perch {{ .Version }}"
+  draft: false
+  prerelease: auto
+  header: |
+    Download the archive for your operating system and architecture below.
+    Linux, macOS, and Windows builds are provided for amd64 and arm64, plus
+    Linux 386 and armv6/armv7 builds for older hardware.
+  footer: |
+    ## Verify this release
+
+    `checksums.txt` covers every asset below and is signed with Sigstore
+    cosign using keyless signing:
+
+    ```sh
+    cosign verify-blob checksums.txt \
+      --bundle checksums.txt.sigstore.json \
+      --certificate-identity-regexp "https://github.com/synqronlabs/perch/.github/workflows/release.yml@refs/tags/.*" \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com
+    ```
+
+    Build provenance is attested by GitHub Actions:
+
+    ```sh
+    gh attestation verify <asset> --repo synqronlabs/perch
+    ```
+
+    See [RELEASING.md](https://github.com/synqronlabs/perch/blob/main/RELEASING.md)
+    for details.
