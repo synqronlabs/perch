@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"text/tabwriter"
 
@@ -20,7 +21,24 @@ import (
 
 // Version is the user-visible build version. Release builds override it with
 // -ldflags "-X github.com/synqronlabs/perch/internal/cli.Version=<version>".
-var Version = "0.1.0-dev"
+// When it is unset (for example with go install ...@v0.1.0), the module
+// version recorded in the binary is used instead.
+var Version = ""
+
+// version returns Version, falling back to the module version embedded by the
+// Go toolchain so `go install ...@<version>` builds report the release tag
+// rather than the development placeholder.
+func version() string {
+	if Version != "" {
+		return Version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			return strings.TrimPrefix(v, "v")
+		}
+	}
+	return "0.1.0-dev"
+}
 
 // Run executes a subcommand and returns a process exit code.
 func Run(args []string) int {
@@ -47,7 +65,7 @@ func newRootCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "perch",
 		Usage:     "a small IMAP mailbox service backed by mxRaven",
-		Version:   Version,
+		Version:   version(),
 		Writer:    os.Stderr,
 		ErrWriter: os.Stderr,
 		ExitErrHandler: func(context.Context, *cli.Command, error) {
@@ -87,7 +105,7 @@ func versionCommand() *cli.Command {
 		Name:  "version",
 		Usage: "print the version",
 		Action: func(context.Context, *cli.Command) error {
-			fmt.Printf("perch %s\n", Version)
+			fmt.Printf("perch %s\n", version())
 			return nil
 		},
 	}

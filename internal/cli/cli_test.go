@@ -70,7 +70,7 @@ func TestVersionOutput(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
-	if want := "perch " + Version + "\n"; out != want {
+	if want := "perch " + version() + "\n"; out != want {
 		t.Fatalf("output = %q, want %q", out, want)
 	}
 }
