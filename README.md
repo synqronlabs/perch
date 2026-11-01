@@ -2,6 +2,8 @@
 
 Run your own IMAP and SMTP mail server on a homelab, NAS, Raspberry Pi, or spare PC with **virtually unlimited mailbox storage**, **no public IP**, **no port forwarding or tunnels**, and **none of the usual mail server complexity**.
 
+[![asciicast](https://asciinema.org/a/crLSuCOxU10ANarU.svg)](https://asciinema.org/a/crLSuCOxU10ANarU)
+
 `perch` is a tiny, single-binary mailbox server backed by [mxRaven](https://mxraven.com). Because mxRaven handles inbound MX, outbound delivery, SPF/DKIM/DMARC, IP reputation, and spam filtering at the edge, your hardware only needs outbound internet access and disk space (or an S3 bucket).
 
 - **No public IP, port forwarding, or tunnels required.** Inbound mail is pulled over an outbound WebSocket stream from mxRaven, and outbound mail is relayed over standard authenticated submission. Your server can sit behind residential NAT or CGNAT.
@@ -97,7 +99,7 @@ With an [mxRaven](https://mxraven.com) API token, `perch setup` automatically co
 ```sh
 export MXRAVEN_API_TOKEN=...
 
-./perch setup \
+perch setup \
   --config ~/.local/share/perch/perch.yaml \
   --data-dir ~/.local/share/perch \
   --workspace my-workspace \
@@ -110,8 +112,8 @@ Publish the DNS records printed by the wizard (or pass `--wait` to wait until DN
 ### 2. Create an account and start the server
 
 ```sh
-./perch account add --config ~/.local/share/perch/perch.yaml --email you@example.com
-./perch serve --config ~/.local/share/perch/perch.yaml
+perch account add --config ~/.local/share/perch/perch.yaml --email you@example.com
+perch serve --config ~/.local/share/perch/perch.yaml
 ```
 
 > Want to test locally before connecting mxRaven? Run `./perch init --data-dir ~/.local/share/perch --hostname localhost --email you@example.com` instead.
@@ -137,7 +139,7 @@ If you want bottomless cloud storage, enable S3 mode. mxRaven writes incoming `.
 export MXRAVEN_API_TOKEN=...
 export PERCH_S3_SECRET_KEY=...
 
-./perch setup \
+perch setup \
   --config ~/.local/share/perch/perch.yaml \
   --data-dir ~/.local/share/perch \
   --workspace my-workspace \
