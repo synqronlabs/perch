@@ -90,6 +90,7 @@ func newRootCommand() *cli.Command {
 			accountCommand(),
 			aliasCommand(),
 			mailboxCommand(),
+			mailCommand(),
 			doctorCommand(),
 			backupCommand(),
 			reconcileCommand(),

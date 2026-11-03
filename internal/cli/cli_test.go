@@ -51,6 +51,7 @@ func TestRunExitCodes(t *testing.T) {
 		{"account usage", []string{"account"}, 1},
 		{"alias usage", []string{"alias"}, 1},
 		{"mailbox usage", []string{"mailbox"}, 1},
+		{"mail usage", []string{"mail"}, 1},
 		{"outbound usage", []string{"outbound"}, 1},
 	}
 	for _, tc := range cases {

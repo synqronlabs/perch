@@ -11,6 +11,7 @@ Run your own IMAP and SMTP mail server on a homelab, NAS, Raspberry Pi, or spare
 - **Runs on old or minimal hardware.** Single static Go binary (CGO-free) with embedded SQLite and FTS5 full-text search.
 - **Zero MTA maintenance.** No Postfix, Dovecot, Rspamd, DKIM signing daemons, or IP warm-up to manage. Moving messages to or from `Junk` automatically trains mxRaven's spam filter.
 - **Run locally or remotely.** Bind to `127.0.0.1` or your LAN on a homelab, or expose it on a VPS with built-in Let's Encrypt (ACME) TLS.
+- **Scriptable mail fetch and send.** `perch mail` is a POSIX-friendly IMAP and SMTP client that reads metadata as JSON, writes raw `.eml`, mbox, or Maildir, and sends MIME messages with attachments against the local server or any remote mail server.
 
 ## Install
 
@@ -130,6 +131,140 @@ Point Thunderbird, Apple Mail, or any IMAP client to:
 | Password | your account password |
 
 To connect from other devices on your LAN, generate a self-signed certificate with `perch init --self-signed` (IMAPS on `1993`, SMTPS on `1465`) or provide your own TLS certificate via `--tls-cert` and `--tls-key`. Off-loopback connections always require TLS.
+
+## Fetch and send mail from the command line
+
+`perch mail` is a small IMAP and SMTP client for scripts, cron jobs, and
+machines that do not run a full mail client. It works against the local
+`perch serve` listeners or any remote mail server.
+
+```sh
+# Local server using the quickstart defaults.
+perch mail list --server 127.0.0.1:1143 --plaintext --username you@example.com
+
+# Remote server with implicit TLS (defaults to port 993).
+perch mail list --server imaps://mail.example.com --username you@example.com
+
+# STARTTLS (defaults to port 143).
+perch mail search --server imap://mail.example.com --username you@example.com \
+  --query 'from:alice since:2026-01-01'
+```
+
+Credentials can come from `--password-file`, `--password-stdin`,
+`PERCH_IMAP_PASSWORD`, or an interactive prompt. `PERCH_IMAP_USER` supplies the
+username. `--password` also works but is visible in process listings, so prefer
+one of the other sources for automation. Add `--plaintext` for a loopback
+listener; remote connections default to implicit TLS, and `imap://` requires
+STARTTLS. Use `--ca-file` for a private CA and `--insecure` only for a
+certificate you cannot verify. If `--server` is omitted, the address is taken
+from `--config` (`imaps_addr` first, then `addr`).
+
+Search expressions are joined with AND. Bare words search the message text;
+supported keys are `from`, `to`, `cc`, `bcc`, `subject`, `body`, `text`,
+`header:Name=Value`, `since`, `before`, `on`, `sent-since`, `sent-before`,
+`sent-on`, `seen`, `unseen`, `answered`, `unanswered`, `flagged`, `unflagged`,
+`deleted`, `undeleted`, `draft`, `undraft`, `larger`, `smaller`, `uid`,
+`flag`/`keyword`, and `unflag`/`unkeyword`. Results are newest first by
+default; `--reverse` flips the order. `--json` writes one JSON object per line.
+
+```sh
+# Message metadata as NDJSON.
+perch mail search --server imaps://mail.example.com --username you@example.com \
+  --query 'unseen larger:1M' --json
+
+# One raw message on stdout.
+perch mail fetch --server imaps://mail.example.com --username you@example.com \
+  --uids 42 > message.eml
+
+# An mbox stream for formail, procmail, or archival.
+perch mail fetch --server imaps://mail.example.com --username you@example.com \
+  --query 'from:alice' --format mbox > alice.mbox
+
+# One .eml file per message.
+perch mail fetch --server imaps://mail.example.com --username you@example.com \
+  --query 'unseen' --dest ./messages
+
+# Maildir, preserving flags.
+perch mail fetch --server imaps://mail.example.com --username you@example.com \
+  --query 'from:alice' --format maildir --dest ~/Mail
+```
+
+`fetch` uses `BODY.PEEK[]`, so it does not change `\Seen`; pass `--mark-seen`
+to let the server mark messages read. Writing `eml` to stdout requires exactly
+one message; use `mbox` or `--dest` for batches. `--dest` is a directory for
+`eml` and `maildir` and a file for `mbox`. Existing files are not overwritten
+unless `--overwrite` is passed.
+
+### Sending mail
+
+`perch mail send` composes a MIME message and submits it through the SMTP
+submission listener.
+
+```sh
+# Simple text message.
+perch mail send --from you@example.com --to alice@example.com \
+  --subject 'Hello' --body 'Hi Alice'
+
+# Read the body from stdin.
+echo 'Hi Alice' | perch mail send --from you@example.com \
+  --to alice@example.com --subject 'Hello'
+
+# Attachments, Cc/Bcc, and both text and HTML bodies.
+perch mail send \
+  --from you@example.com \
+  --to 'Alice <alice@example.com>' \
+  --cc bob@example.net \
+  --bcc audit@example.net \
+  --subject 'Quarterly report' \
+  --body-file message.txt \
+  --html-file message.html \
+  --attach report.pdf \
+  --attach chart.png
+
+# Compose and inspect the raw message without sending it.
+perch mail send --from you@example.com --to alice@example.com \
+  --subject 'Draft' --body 'Hello' --dry-run > message.eml
+```
+
+`--from` defaults to `--username` (or `PERCH_IMAP_USER`). When a password is
+available, the SMTP username also defaults to the `From` address. SMTP
+credentials and TLS options mirror the IMAP client with an `smtp-` prefix:
+`--smtp-server`, `--smtp-plaintext`, `--smtp-starttls`,
+`--smtp-implicit-tls`, `--smtp-ca-file`, and `--smtp-insecure`. If
+`--smtp-server` is omitted, the submission listener in `--config` is used
+(`tls_addr` first, then `addr`). For the quickstart plaintext listener, pass
+`--smtp-plaintext` when you give an explicit `--smtp-server 127.0.0.1:1587`;
+a config-derived `addr` selects plaintext automatically.
+
+Bodies are quoted-printable unless `--8bitmime` is set, in which case they are
+sent as UTF-8 with `BODY=8BITMIME`; attachments are always base64 encoded.
+SMTPUTF8 is detected from non-ASCII envelope addresses. Force it with
+`--smtputf8` or disable it with `--smtputf8=false`. `--verbose` prints the
+server's EHLO capabilities and delivery details to stderr.
+
+### SMTP extension support
+
+`perch mail caps` prints the extensions advertised by the configured submission
+server. Use `--smtp-server` to inspect another server:
+
+```sh
+perch mail caps
+perch mail caps --smtp-server smtp.mxraven.email:587
+```
+
+The local perch submission relay advertises `PIPELINING`, `8BITMIME`,
+`ENHANCEDSTATUSCODES`, `SIZE`, `SMTPUTF8`, `STARTTLS` when TLS is configured,
+and `AUTH PLAIN LOGIN` when TLS or loopback insecure auth is enabled. It
+forwards `SIZE`, `BODY=8BITMIME`, and `SMTPUTF8` upstream, but does not expose
+`DSN`, `CHUNKING`, `BINARYMIME`, `REQUIRETLS`, or `DELIVERBY` because it always
+relays the message body with `DATA`, not `BDAT`.
+
+mxRaven's submission endpoint advertises `CHUNKING`, `SMTPUTF8`,
+`REQUIRETLS`, `DELIVERBY`, and `BINARYMIME` in addition to the standard set,
+but not `DSN`. Since perch's local relay does not pass those parameters
+through, `perch mail send` only adds `--8bitmime` and `--smtputf8`; `SIZE` is
+sent automatically. Run `perch mail caps --smtp-server smtp.mxraven.email:587`
+to inspect the live upstream set.
 
 ## Archival with S3
 
@@ -529,6 +664,8 @@ perch serve       run IMAP, submission, and the mxRaven notification consumer
 perch account     add | list | passwd | disable | enable
 perch alias       add | remove | list
 perch mailbox     list
+perch mail        list | search | fetch (IMAP client, local or remote)
+perch mail        send | caps (SMTP submission client)
 perch doctor      verify SQLite, FTS5, TLS, DNS, S3, and mxRaven connectivity
 perch reconcile   force an immediate S3 bucket scan
 perch gc          clean up orphaned local blobs and enforce S3 spool limits
