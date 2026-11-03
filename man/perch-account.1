@@ -1,0 +1,44 @@
+.TH "PERCH-ACCOUNT" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-account \- add, list, password, disable, or enable accounts
+.SH SYNOPSIS
+.B perch account [OPTIONS] COMMAND
+.SH DESCRIPTION
+.PP
+Manage local mailbox accounts. Creating an account also creates the default mailbox set: INBOX, Sent, Drafts, Trash, Junk, and Archive.
+.SH NOTES
+.IP \(bu 2
+Passwords are hashed with Argon2id.
+.IP \(bu 2
+Account changes are written to SQLite and apply without restarting serve.
+.SH OPTIONS
+.TP
+.B \-\-help, \-h
+show help
+.SH COMMANDS
+.TP
+.B add
+create an account
+.TP
+.B list
+list accounts
+.TP
+.B passwd
+change an account password
+.TP
+.B disable
+disable an account
+.TP
+.B enable
+enable an account
+.SH EXAMPLES
+.nf
+perch account add \-\-email you@example.com
+
+perch account list
+
+perch account passwd \-\-email you@example.com
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-account\-add\fR(1), \fBperch\-account\-disable\fR(1), \fBperch\-account\-enable\fR(1), \fBperch\-account\-list\fR(1), \fBperch\-account\-passwd\fR(1)

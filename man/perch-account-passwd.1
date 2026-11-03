@@ -1,0 +1,31 @@
+.TH "PERCH-ACCOUNT-PASSWD" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-account\-passwd \- change an account password
+.SH SYNOPSIS
+.B perch account passwd [OPTIONS]
+.SH DESCRIPTION
+.PP
+Replace the account's Argon2id password hash. Existing IMAP and submission sessions are not terminated.
+.SH NOTES
+.IP \(bu 2
+Prompts for the new password when \-\-password is omitted.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-email <value>
+account email
+.TP
+.B \-\-password <value>
+new password (prompted when empty)
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch account passwd \-\-email you@example.com
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-account\fR(1)

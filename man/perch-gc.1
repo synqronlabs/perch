@@ -1,0 +1,44 @@
+.TH "PERCH-GC" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-gc \- remove orphan blobs, old dead letters, and S3 tombstones
+.SH SYNOPSIS
+.B perch gc [OPTIONS]
+.SH DESCRIPTION
+.PP
+Remove orphaned local blobs, dead letters older than \-\-dead\-letter\-age, enforce the S3 spool limit, and optionally delete S3 objects for deleted messages. An incremental vacuum runs by default.
+.SH NOTES
+.IP \(bu 2
+\-\-s3\-delete is ignored in SQLite mode.
+.IP \(bu 2
+Without \-\-s3\-delete, S3 tombstones accumulate.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-dry\-run
+report what would be removed
+.TP
+.B \-\-s3\-delete
+delete S3 objects for deleted messages
+.TP
+.B \-\-dead\-letter\-age <value>
+delete dead letters older than this (default: 720h0m0s)
+.TP
+.B \-\-vacuum
+run incremental vacuum after cleanup
+.TP
+.B \-\-spool
+enforce storage.s3.spool_max_bytes
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch gc \-\-config /etc/perch/perch.yaml \-\-dry\-run
+
+perch gc \-\-config /etc/perch/perch.yaml \-\-s3\-delete
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1)

@@ -43,3 +43,8 @@ go.work.sum
 *.db
 *.db-shm
 *.db-wal
+
+# Hugo site output
+/website/public/
+/website/resources/
+/website/.hugo_build.lock

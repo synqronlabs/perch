@@ -1,0 +1,72 @@
+.TH "PERCH-MAIL-LIST" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-mail\-list \- list mailboxes
+.SH SYNOPSIS
+.B perch mail list [OPTIONS]
+.SH DESCRIPTION
+.PP
+List mailboxes on the selected IMAP server. The default output is a table; \-\-json writes one JSON object per line.
+.PP
+Aliases: ls.
+.SH NOTES
+.IP \(bu 2
+\-\-subscribed requires server support for LIST\-EXTENDED.
+.SH OPTIONS
+.TP
+.B \-\-username, \-u <value>
+account username (env PERCH_IMAP_USER)
+.TP
+.B \-\-password <value>
+account password (prefer PERCH_IMAP_PASSWORD or \-\-password\-file)
+.TP
+.B \-\-password\-file <value>
+read the account password from a file
+.TP
+.B \-\-password\-stdin
+read the account password from stdin
+.TP
+.B \-\-timeout <value>
+connection timeout (default: 30s)
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-json
+write one JSON object per mailbox
+.TP
+.B \-\-subscribed
+only list subscribed mailboxes
+.TP
+.B \-\-server, \-s <value>
+IMAP server (imaps://host, imap://host, or host[:port]); defaults from \-\-config
+.TP
+.B \-\-plaintext
+connect to IMAP without TLS (use only on trusted networks)
+.TP
+.B \-\-starttls
+require STARTTLS for IMAP
+.TP
+.B \-\-insecure
+skip IMAP TLS certificate verification
+.TP
+.B \-\-ca\-file <value>
+PEM CA bundle used to verify the IMAP server certificate
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch mail list \-\-server 127.0.0.1:1143 \-\-plaintext \-\-username you@example.com
+
+perch mail list \-\-server imaps://mail.example.com \-\-username you@example.com \-\-json
+.fi
+.SH ENVIRONMENT
+.TP
+.B PERCH_IMAP_USER
+default account username
+.TP
+.B PERCH_IMAP_PASSWORD
+account password
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-mail\fR(1)

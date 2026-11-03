@@ -67,6 +67,9 @@ jobs:
           go mod verify
           go mod tidy -diff
 
+      - name: Check generated documentation
+        run: make docs-check
+
       - name: Vet
         run: go vet ./...
 

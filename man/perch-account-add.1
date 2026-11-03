@@ -1,0 +1,34 @@
+.TH "PERCH-ACCOUNT-ADD" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-account\-add \- create an account
+.SH SYNOPSIS
+.B perch account add [OPTIONS]
+.SH DESCRIPTION
+.PP
+Create an account, its primary address, and default mailboxes in one transaction. If \-\-password is omitted, perch prompts on a terminal.
+.SH NOTES
+.IP \(bu 2
+The account is enabled immediately.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-email <value>
+account email
+.TP
+.B \-\-name <value>
+display name
+.TP
+.B \-\-password <value>
+password (prompted when empty)
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch account add \-\-email you@example.com \-\-name 'Your Name'
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-account\fR(1)

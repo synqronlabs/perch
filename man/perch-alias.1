@@ -1,0 +1,36 @@
+.TH "PERCH-ALIAS" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-alias \- manage address aliases and catch\-all domains
+.SH SYNOPSIS
+.B perch alias [OPTIONS] COMMAND
+.SH DESCRIPTION
+.PP
+Aliases map additional addresses to an account. A catch\-all is stored as *@domain and accepts any local part for that domain.
+.SH NOTES
+.IP \(bu 2
+Plus\-addressing (user+tag@domain) works without an explicit alias.
+.SH OPTIONS
+.TP
+.B \-\-help, \-h
+show help
+.SH COMMANDS
+.TP
+.B add
+add an alias or catch\-all
+.TP
+.B remove
+remove an alias
+.TP
+.B list
+list aliases for an account
+.SH EXAMPLES
+.nf
+perch alias add \-\-account you@example.com \-\-address sales@example.com
+
+perch alias add \-\-account you@example.com \-\-catch\-all \-\-address example.net
+
+perch alias list \-\-account you@example.com
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-alias\-add\fR(1), \fBperch\-alias\-list\fR(1), \fBperch\-alias\-remove\fR(1)

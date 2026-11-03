@@ -1,0 +1,28 @@
+.TH "PERCH-OUTBOUND-LIST" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-outbound\-list \- list submitted messages
+.SH SYNOPSIS
+.B perch outbound list [OPTIONS]
+.SH DESCRIPTION
+.PP
+Print recent outbound submissions, optionally filtered by account. \-\-limit defaults to 100.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-account <value>
+filter by account email
+.TP
+.B \-\-limit <value>
+maximum rows (default: 100)
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch outbound list \-\-limit 20
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-outbound\fR(1)

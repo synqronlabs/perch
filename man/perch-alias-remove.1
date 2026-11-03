@@ -1,0 +1,25 @@
+.TH "PERCH-ALIAS-REMOVE" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-alias\-remove \- remove an alias or catch\-all
+.SH SYNOPSIS
+.B perch alias remove [OPTIONS]
+.SH DESCRIPTION
+.PP
+Remove an alias address or catch\-all from the address table. Messages already delivered are unaffected.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-address <value>
+alias address
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch alias remove \-\-address sales@example.com
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-alias\fR(1)

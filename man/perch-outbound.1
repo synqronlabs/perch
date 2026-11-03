@@ -1,0 +1,23 @@
+.TH "PERCH-OUTBOUND" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-outbound \- list submitted messages and delivery status
+.SH SYNOPSIS
+.B perch outbound [OPTIONS] COMMAND
+.SH DESCRIPTION
+.PP
+Inspect the outbound table populated by the submission relay. It shows acceptance and later delivery attempts reported by mxRaven.
+.SH OPTIONS
+.TP
+.B \-\-help, \-h
+show help
+.SH COMMANDS
+.TP
+.B list
+list submitted messages
+.SH EXAMPLES
+.nf
+perch outbound list \-\-account you@example.com
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-outbound\-list\fR(1)

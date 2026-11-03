@@ -1,0 +1,137 @@
+.TH "PERCH-MAIL-SEND" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-mail\-send \- compose and send a message
+.SH SYNOPSIS
+.B perch mail send [OPTIONS]
+.SH DESCRIPTION
+.PP
+Compose a MIME message and submit it through SMTP. Text and HTML bodies are combined as multipart/alternative; attachments wrap the result in multipart/mixed.
+.PP
+Bodies come from \-\-body/\-\-body\-file and \-\-html\-body/\-\-html\-file, or stdin when it is not a terminal. Attachments are base64 encoded and content types are detected from the file extension or contents.
+.SH NOTES
+.IP \(bu 2
+Bodies are quoted\-printable unless \-\-8bitmime is set; attachments are base64.
+.IP \(bu 2
+SMTPUTF8 is detected from non\-ASCII envelope addresses and extra headers; force it with \-\-smtputf8.
+.IP \(bu 2
+Bcc recipients are envelope\-only and never appear in headers.
+.IP \(bu 2
+SIZE is sent automatically and checked against the server's advertised limit.
+.SH OPTIONS
+.TP
+.B \-\-username, \-u <value>
+account username (env PERCH_IMAP_USER)
+.TP
+.B \-\-password <value>
+account password (prefer PERCH_IMAP_PASSWORD or \-\-password\-file)
+.TP
+.B \-\-password\-file <value>
+read the account password from a file
+.TP
+.B \-\-password\-stdin
+read the account password from stdin
+.TP
+.B \-\-timeout <value>
+connection timeout (default: 30s)
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-from <value>
+sender address (default: \-\-username)
+.TP
+.B \-\-to <value>...
+recipient address or list; repeatable
+.TP
+.B \-\-cc <value>...
+Cc recipient address or list; repeatable
+.TP
+.B \-\-bcc <value>...
+Bcc recipient address or list; repeatable
+.TP
+.B \-\-reply\-to <value>...
+Reply\-To address or list; repeatable
+.TP
+.B \-\-subject, \-s <value>
+message subject
+.TP
+.B \-\-body <value>
+plain\-text body
+.TP
+.B \-\-body\-file <value>
+read the plain\-text body from a file (use \- for stdin)
+.TP
+.B \-\-html\-body <value>
+HTML body
+.TP
+.B \-\-html\-file <value>
+read the HTML body from a file (use \- for stdin)
+.TP
+.B \-\-attach, \-a <value>...
+attach a file; repeatable
+.TP
+.B \-\-header, \-H <value>...
+add an extra header (Name: Value); repeatable
+.TP
+.B \-\-in\-reply\-to <value>
+Message\-ID being replied to
+.TP
+.B \-\-references <value>
+space\-separated Message\-IDs for References
+.TP
+.B \-\-8bitmime
+send UTF\-8 text with BODY=8BITMIME
+.TP
+.B \-\-smtputf8
+force SMTPUTF8 (usually detected automatically)
+.TP
+.B \-\-dry\-run, \-n
+write the composed message to stdout without sending
+.TP
+.B \-\-verbose, \-v
+print SMTP capabilities and delivery details to stderr
+.TP
+.B \-\-smtp\-server, \-S <value>
+SMTP submission server (smtps://host, smtp://host, or host[:port]); defaults from \-\-config
+.TP
+.B \-\-smtp\-plaintext
+connect to SMTP without TLS (use only on trusted networks)
+.TP
+.B \-\-smtp\-starttls
+require STARTTLS for SMTP
+.TP
+.B \-\-smtp\-implicit\-tls
+use implicit TLS for SMTP (usually port 465)
+.TP
+.B \-\-smtp\-insecure
+skip SMTP TLS certificate verification
+.TP
+.B \-\-smtp\-ca\-file <value>
+PEM CA bundle used to verify the SMTP server certificate
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch mail send \-\-from you@example.com \-\-to alice@example.com \\
+  \-\-subject Hello \-\-body 'Hi Alice'
+
+echo 'Body from stdin' | perch mail send \-\-from you@example.com \\
+  \-\-to alice@example.com \-\-subject Hello
+
+perch mail send \-\-from you@example.com \-\-to alice@example.com \\
+  \-\-subject Report \-\-body\-file message.txt \-\-html\-file message.html \\
+  \-\-attach report.pdf
+
+perch mail send ... \-\-dry\-run > message.eml
+.fi
+.SH ENVIRONMENT
+.TP
+.B PERCH_IMAP_USER
+default account username and sender
+.TP
+.B PERCH_IMAP_PASSWORD
+account password
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-mail\fR(1)

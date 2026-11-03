@@ -61,6 +61,14 @@ func Run(args []string) int {
 	return 1
 }
 
+// RootCommand returns the command tree used by the documentation generator.
+// Callers must not run the returned command.
+//
+//go:generate go run ../../cmd/gen-docs
+func RootCommand() *cli.Command {
+	return newRootCommand()
+}
+
 func newRootCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "perch",
