@@ -59,6 +59,7 @@ Full documentation, including configuration, S3 storage, TLS, systemd, mail-clie
 **https://perch.mxraven.com/**
 
 - [Installation](https://perch.mxraven.com/docs/getting-started/installation/)
+- [Create an mxRaven API key](https://perch.mxraven.com/docs/getting-started/mxraven-api-key/)
 - [Quickstart](https://perch.mxraven.com/docs/getting-started/quickstart/)
 - [Configuration](https://perch.mxraven.com/docs/configuration/)
 - [Mail client](https://perch.mxraven.com/docs/mail/)
@@ -96,6 +97,7 @@ for the release download script, Windows notes, and manpage installation.
 
 ```sh
 # 1. Provision mxRaven and write perch.yaml.
+# Create an API key first: https://perch.mxraven.com/docs/getting-started/mxraven-api-key/
 export MXRAVEN_API_TOKEN=...
 perch setup \
   --config ~/.local/share/perch/perch.yaml \

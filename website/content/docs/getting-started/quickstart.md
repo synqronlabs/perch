@@ -8,9 +8,9 @@ connects a mail client.
 
 ## 1. Provision mxRaven and generate config
 
-With an [mxRaven](https://mxraven.com) API token, `perch setup` configures your
-domain, inbound route, submission listener, spam/auth rules, and writes
-`perch.yaml`:
+First [create an mxRaven API key](mxraven-api-key.md), then export it. With the
+token, `perch setup` configures your domain, inbound route, submission listener,
+spam/auth rules, and writes `perch.yaml`:
 
 ```sh
 export MXRAVEN_API_TOKEN=...
