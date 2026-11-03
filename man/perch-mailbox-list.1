@@ -1,0 +1,25 @@
+.TH "PERCH-MAILBOX-LIST" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-mailbox\-list \- list mailboxes
+.SH SYNOPSIS
+.B perch mailbox list [OPTIONS]
+.SH DESCRIPTION
+.PP
+Print each mailbox name, special\-use attribute, and subscription state for an account.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-account <value>
+account email
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch mailbox list \-\-account you@example.com
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-mailbox\fR(1)

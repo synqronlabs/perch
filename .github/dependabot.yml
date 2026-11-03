@@ -37,3 +37,21 @@ updates:
         update-types:
           - minor
           - patch
+
+  - package-ecosystem: gomod
+    directory: "/website"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(docs)"
+    labels:
+      - dependencies
+    groups:
+      hugo-theme-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

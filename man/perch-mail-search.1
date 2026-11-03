@@ -1,0 +1,90 @@
+.TH "PERCH-MAIL-SEARCH" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-mail\-search \- search message metadata
+.SH SYNOPSIS
+.B perch mail search [OPTIONS]
+.SH DESCRIPTION
+.PP
+Search a mailbox with IMAP SEARCH and print metadata for matching messages. Results are newest first by default; \-\-reverse flips the order.
+.PP
+Bare query words search the message text. Supported keys: from, to, cc, bcc, subject, body, text, header:Name=Value, since, before, on, sent\-since, sent\-before, sent\-on, seen, unseen, answered, unanswered, flagged, unflagged, deleted, undeleted, draft, undraft, larger, smaller, uid, flag/keyword, and unflag/unkeyword.
+.PP
+Aliases: find.
+.SH NOTES
+.IP \(bu 2
+The default limit is 50; \-\-limit 0 means unlimited.
+.IP \(bu 2
+The mailbox is examined read\-only, so search does not change flags.
+.SH OPTIONS
+.TP
+.B \-\-username, \-u <value>
+account username (env PERCH_IMAP_USER)
+.TP
+.B \-\-password <value>
+account password (prefer PERCH_IMAP_PASSWORD or \-\-password\-file)
+.TP
+.B \-\-password\-file <value>
+read the account password from a file
+.TP
+.B \-\-password\-stdin
+read the account password from stdin
+.TP
+.B \-\-timeout <value>
+connection timeout (default: 30s)
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-mailbox, \-m <value>
+mailbox to search (default: "INBOX")
+.TP
+.B \-\-query, \-q <value>
+search expression (see the examples in \-\-help)
+.TP
+.B \-\-uids <value>
+explicit UID set, for example 1,3:5,10:*
+.TP
+.B \-\-limit, \-n <value>
+maximum results (0 means unlimited) (default: 50)
+.TP
+.B \-\-reverse
+oldest first instead of newest first
+.TP
+.B \-\-json
+write one JSON object per message
+.TP
+.B \-\-server, \-s <value>
+IMAP server (imaps://host, imap://host, or host[:port]); defaults from \-\-config
+.TP
+.B \-\-plaintext
+connect to IMAP without TLS (use only on trusted networks)
+.TP
+.B \-\-starttls
+require STARTTLS for IMAP
+.TP
+.B \-\-insecure
+skip IMAP TLS certificate verification
+.TP
+.B \-\-ca\-file <value>
+PEM CA bundle used to verify the IMAP server certificate
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch mail search \-q 'from:alice since:2026\-01\-01'
+
+perch mail search \-q 'unseen larger:1M' \-\-json
+
+perch mail search \-\-uids 12,14 \-\-limit 0
+.fi
+.SH ENVIRONMENT
+.TP
+.B PERCH_IMAP_USER
+default account username
+.TP
+.B PERCH_IMAP_PASSWORD
+account password
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-mail\fR(1)

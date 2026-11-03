@@ -1,0 +1,25 @@
+.TH "PERCH-DOCTOR" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-doctor \- check the database, TLS, S3, and mxRaven connectivity
+.SH SYNOPSIS
+.B perch doctor [OPTIONS]
+.SH DESCRIPTION
+.PP
+Run integrity and connectivity checks for SQLite/FTS5, TLS certificate files, DNS, S3, and configured mxRaven listeners. The command exits non\-zero when a check fails.
+.SH NOTES
+.IP \(bu 2
+Run as the same user that runs serve so file permissions match.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch doctor \-\-config /etc/perch/perch.yaml
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1)

@@ -1,0 +1,25 @@
+.TH "PERCH-ALIAS-LIST" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-alias\-list \- list aliases
+.SH SYNOPSIS
+.B perch alias list [OPTIONS]
+.SH DESCRIPTION
+.PP
+List the addresses and catch\-all domains assigned to an account.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-account <value>
+account email
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch alias list \-\-account you@example.com
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-alias\fR(1)

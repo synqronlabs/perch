@@ -1,0 +1,25 @@
+.TH "PERCH-RECONCILE" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-reconcile \- force one S3 bucket reconciliation pass
+.SH SYNOPSIS
+.B perch reconcile [OPTIONS]
+.SH DESCRIPTION
+.PP
+Scan the configured S3 bucket and bind objects written by mxRaven to local message metadata. Requires storage.mode=s3.
+.SH NOTES
+.IP \(bu 2
+serve runs this at startup and every storage.s3.reconcile_every (default 5m).
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch reconcile \-\-config /etc/perch/perch.yaml
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1)

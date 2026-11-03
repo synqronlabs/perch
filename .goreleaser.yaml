@@ -86,6 +86,17 @@ archives:
           owner: root
           group: root
           mtime: "{{ .CommitDate }}"
+      - src: logo.svg
+        info:
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
+      - src: man/*.1
+        dst: man
+        info:
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
 
 checksum:
   name_template: checksums.txt

@@ -53,6 +53,7 @@ constant for a release.
 
    ```sh
    make tidy vet race lint
+   make docs-check website
    make release-check
    make snapshot       # cross-builds archives without publishing
    ```
@@ -92,7 +93,7 @@ The `Release` workflow runs on any `v*` tag push:
    - cross-compile CGO-free binaries for Linux (amd64, arm64, 386, armv6,
      armv7), macOS (amd64, arm64), and Windows (amd64, arm64);
    - create `.tar.gz` archives (`.zip` on Windows) containing the binary,
-     `README.md`, and `LICENSE`;
+     `README.md`, `LICENSE`, and generated `man/*.1` pages;
    - create a source tarball;
    - write `checksums.txt` (SHA-256);
    - generate SPDX SBOMs for every archive and the source tarball with Syft;
@@ -108,6 +109,21 @@ binaries include standard-library security fixes.
 
 The job uses only the repository-scoped `GITHUB_TOKEN`; no long-lived release
 secrets are stored.
+
+## Documentation site
+
+The `Website` workflow builds `website/` with Hugo and deploys it to GitHub
+Pages. It runs when site content, manpages, the documentation generator, or the
+CLI command tree changes on `main`.
+
+Enable it once in **Settings → Pages → Build and deployment → Source: GitHub
+Actions**. The default site URL is
+`https://perch.mxraven.com/`; the custom domain is declared in
+`website/static/CNAME`.
+
+The `Docs` CI job runs `make docs-check`, which regenerates `man/*.1` and
+`website/content/docs/cli/*.md` and fails if they are stale. Run `make docs`
+after changing commands or flags.
 
 ## Verifying a release
 

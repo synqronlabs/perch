@@ -1,0 +1,25 @@
+.TH "PERCH-ACCOUNT-ENABLE" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-account\-enable \- enable an account
+.SH SYNOPSIS
+.B perch account enable [OPTIONS]
+.SH DESCRIPTION
+.PP
+Re\-enable a previously disabled account.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-email <value>
+account email
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch account enable \-\-email you@example.com
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-account\fR(1)

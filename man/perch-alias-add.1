@@ -1,0 +1,33 @@
+.TH "PERCH-ALIAS-ADD" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-alias\-add \- add an alias or catch\-all
+.SH SYNOPSIS
+.B perch alias add [OPTIONS]
+.SH DESCRIPTION
+.PP
+Add an exact address alias, or use \-\-catch\-all with a domain to route all unmatched addresses at that domain to the account. The address must not already belong to another account.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-account <value>
+account email
+.TP
+.B \-\-address <value>
+alias address or domain
+.TP
+.B \-\-catch\-all
+route all unmatched addresses at \-\-address
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch alias add \-\-account you@example.com \-\-address sales@example.com
+
+perch alias add \-\-account you@example.com \-\-catch\-all \-\-address example.net
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-alias\fR(1)

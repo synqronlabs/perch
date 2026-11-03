@@ -1,0 +1,33 @@
+.TH "PERCH-SERVE" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-serve \- run IMAP, submission, and the notification consumer
+.SH SYNOPSIS
+.B perch serve [OPTIONS]
+.SH DESCRIPTION
+.PP
+serve runs in the foreground and starts the configured IMAP, IMAPS, submission, and SMTPS listeners plus the mxRaven WebSocket consumer and S3 reconciler.
+.PP
+It logs to stderr, drains connections on SIGTERM/SIGINT for up to five seconds, and reloads certificate files on SIGHUP when tls.cert_file and tls.key_file are set. It does not fork, write a PID file, or support socket activation.
+.SH NOTES
+.IP \(bu 2
+Use Type=simple in systemd; Type=notify and socket units are not supported.
+.IP \(bu 2
+SIGHUP terminates the process when manual TLS files are not configured.
+.IP \(bu 2
+Account, alias, and mailbox changes apply without restarting serve.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch serve \-\-config /etc/perch/perch.yaml
+
+sudo systemctl reload perch   # only with manual TLS files
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1)

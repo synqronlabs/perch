@@ -1,0 +1,26 @@
+.TH "PERCH-MAILBOX" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-mailbox \- list mailboxes for an account
+.SH SYNOPSIS
+.B perch mailbox [OPTIONS] COMMAND
+.SH DESCRIPTION
+.PP
+Inspect mailbox metadata stored in SQLite. This reads the local database directly and does not require serve to be running.
+.SH NOTES
+.IP \(bu 2
+The mailbox command is local\-only; use perch mail list for a remote IMAP server.
+.SH OPTIONS
+.TP
+.B \-\-help, \-h
+show help
+.SH COMMANDS
+.TP
+.B list
+list mailboxes for an account
+.SH EXAMPLES
+.nf
+perch mailbox list \-\-account you@example.com
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-mailbox\-list\fR(1)

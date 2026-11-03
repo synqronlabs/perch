@@ -1,0 +1,76 @@
+.TH "PERCH-MAIL" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-mail \- list, search, fetch, send, and inspect mail over IMAP and SMTP
+.SH SYNOPSIS
+.B perch mail [OPTIONS] COMMAND
+.SH DESCRIPTION
+.PP
+The mail command group is a scriptable IMAP and SMTP client. list, search, and fetch talk IMAP; send talks SMTP; caps prints the SMTP EHLO extensions of a submission server.
+.PP
+Credentials and TLS flags are shared. IMAP flags are local to list/search/fetch; SMTP flags are local to send/caps.
+.SH NOTES
+.IP \(bu 2
+If \-\-server or \-\-smtp\-server is omitted, the matching listener is taken from \-\-config.
+.IP \(bu 2
+Use \-\-plaintext or \-\-smtp\-plaintext only for trusted loopback listeners.
+.IP \(bu 2
+Password sources: \-\-password\-file, \-\-password\-stdin, PERCH_IMAP_PASSWORD, or an interactive prompt.
+.SH OPTIONS
+.TP
+.B \-\-username, \-u <value>
+account username (env PERCH_IMAP_USER)
+.TP
+.B \-\-password <value>
+account password (prefer PERCH_IMAP_PASSWORD or \-\-password\-file)
+.TP
+.B \-\-password\-file <value>
+read the account password from a file
+.TP
+.B \-\-password\-stdin
+read the account password from stdin
+.TP
+.B \-\-timeout <value>
+connection timeout (default: 30s)
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-help, \-h
+show help
+.SH COMMANDS
+.TP
+.B list
+list mailboxes (aliases: ls)
+.TP
+.B search
+search message metadata (aliases: find)
+.TP
+.B fetch
+fetch raw messages (aliases: get)
+.TP
+.B send
+compose and send a message
+.TP
+.B caps
+show the SMTP extensions advertised by a submission server (aliases: capabilities)
+.SH EXAMPLES
+.nf
+perch mail list \-\-server imaps://mail.example.com \-\-username you@example.com
+
+perch mail search \-q 'unseen from:alice' \-\-json
+
+perch mail fetch \-q 'from:alice' \-\-format mbox > alice.mbox
+
+perch mail send \-\-from you@example.com \-\-to alice@example.com \\
+  \-\-subject Hello \-\-body 'Hi Alice'
+.fi
+.SH ENVIRONMENT
+.TP
+.B PERCH_IMAP_USER
+default account username
+.TP
+.B PERCH_IMAP_PASSWORD
+account password
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-mail\-caps\fR(1), \fBperch\-mail\-fetch\fR(1), \fBperch\-mail\-list\fR(1), \fBperch\-mail\-search\fR(1), \fBperch\-mail\-send\fR(1)

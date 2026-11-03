@@ -1,0 +1,122 @@
+.TH "PERCH" "1" "" "perch" "perch manual"
+.SH NAME
+perch \- a small IMAP mailbox service backed by mxRaven
+.SH SYNOPSIS
+.B perch [OPTIONS] COMMAND
+.SH DESCRIPTION
+.PP
+perch runs a local IMAP server and authenticated submission endpoint, backed by mxRaven for inbound MX, outbound delivery, SPF/DKIM/DMARC, IP reputation, and spam filtering.
+.PP
+Messages are stored in SQLite or offloaded to S3. The same binary provides administrative commands and a scriptable mail client for IMAP and SMTP.
+.SH NOTES
+.IP \(bu 2
+Run perch help <command> or see the per\-command manpages for details.
+.IP \(bu 2
+The default configuration path is $XDG_CONFIG_HOME/perch/perch.yaml.
+.IP \(bu 2
+perch does not need a public IP, port forwarding, or inbound SMTP ports.
+.SH OPTIONS
+.TP
+.B \-\-help, \-h
+show help
+.TP
+.B \-\-version, \-v
+print the version
+.SH COMMANDS
+.TP
+.B init
+create a local configuration and optional first account
+.TP
+.B setup
+create the mxRaven domain, listeners, keys, and routes
+.TP
+.B serve
+run IMAP, submission, and the notification consumer
+.TP
+.B account
+add, list, password, disable, or enable accounts
+.TP
+.B alias
+manage address aliases and catch\-all domains
+.TP
+.B mailbox
+list mailboxes for an account
+.TP
+.B mail
+list, search, fetch, and send mail
+.TP
+.B doctor
+check the database, TLS, S3, and mxRaven connectivity
+.TP
+.B backup
+write a consistent SQLite backup
+.TP
+.B reconcile
+force one S3 bucket reconciliation pass
+.TP
+.B gc
+remove orphan blobs, old dead letters, and S3 tombstones
+.TP
+.B outbound
+list submitted messages and delivery status
+.TP
+.B version
+print the version
+.SH EXAMPLES
+.nf
+perch setup \-\-workspace my\-workspace \-\-domain example.com \-\-hostname localhost
+
+perch account add \-\-email you@example.com
+
+perch serve \-\-config ~/.local/share/perch/perch.yaml
+
+perch mail list \-\-server 127.0.0.1:1143 \-\-plaintext \-\-username you@example.com
+.fi
+.SH ENVIRONMENT
+.TP
+.B PERCH_CONFIG
+path to perch.yaml
+.TP
+.B PERCH_DATA_DIR
+override data_dir
+.TP
+.B PERCH_HOSTNAME
+override hostname
+.TP
+.B PERCH_IMAP_USER
+default account username for perch mail
+.TP
+.B PERCH_IMAP_PASSWORD
+account password for perch mail
+.TP
+.B PERCH_S3_SECRET_KEY
+S3 secret when storage.s3.secret_key_env selects it
+.TP
+.B PERCH_MXRAVEN_KEY_SECRET
+mxRaven MTA listener secret
+.TP
+.B PERCH_MXRAVEN_SUBMISSION_KEY_SECRET
+mxRaven submission listener secret
+.TP
+.B MXRAVEN_API_TOKEN
+control\-plane token used by perch setup
+.SH FILES
+.TP
+.B ~/.config/perch/perch.yaml
+Default configuration file ($XDG_CONFIG_HOME/perch/perch.yaml).
+.TP
+.B ~/.config/perch/perch.db
+Default SQLite database when data_dir is not overridden.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Runtime or usage error.
+.TP
+.B 2
+Command-line usage error.
+.SH SEE ALSO
+.PP
+\fBperch\-account\fR(1), \fBperch\-alias\fR(1), \fBperch\-backup\fR(1), \fBperch\-doctor\fR(1), \fBperch\-gc\fR(1), \fBperch\-init\fR(1), \fBperch\-mail\fR(1), \fBperch\-mailbox\fR(1), \fBperch\-outbound\fR(1), \fBperch\-reconcile\fR(1), \fBperch\-serve\fR(1), \fBperch\-setup\fR(1), \fBperch\-version\fR(1)

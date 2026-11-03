@@ -1,0 +1,25 @@
+.TH "PERCH-ACCOUNT-DISABLE" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-account\-disable \- disable an account
+.SH SYNOPSIS
+.B perch account disable [OPTIONS]
+.SH DESCRIPTION
+.PP
+Disable prevents new IMAP and submission logins without deleting messages. Use enable to reverse it.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-email <value>
+account email
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch account disable \-\-email you@example.com
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-account\fR(1)

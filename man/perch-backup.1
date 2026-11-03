@@ -1,0 +1,25 @@
+.TH "PERCH-BACKUP" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-backup \- write a consistent SQLite backup
+.SH SYNOPSIS
+.B perch backup [OPTIONS] <destination.db>
+.SH DESCRIPTION
+.PP
+Use SQLite's online backup API to write a consistent copy while serve is running. The destination must not already exist.
+.SH NOTES
+.IP \(bu 2
+Safe alongside serve because SQLite WAL mode allows concurrent readers and writers.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch backup \-\-config /etc/perch/perch.yaml /var/lib/perch/backups/perch\-$(date +%F).db
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1)

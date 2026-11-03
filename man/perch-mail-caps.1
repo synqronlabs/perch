@@ -1,0 +1,64 @@
+.TH "PERCH-MAIL-CAPS" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-mail\-caps \- show the SMTP extensions advertised by a submission server
+.SH SYNOPSIS
+.B perch mail caps [OPTIONS]
+.SH DESCRIPTION
+.PP
+Connect to the configured submission server, perform EHLO, and print the advertised extensions. No message is sent and no credentials are used.
+.PP
+Aliases: capabilities.
+.SH NOTES
+.IP \(bu 2
+The local perch relay advertises PIPELINING, 8BITMIME, ENHANCEDSTATUSCODES, SIZE, SMTPUTF8, STARTTLS, and AUTH on loopback or TLS.
+.IP \(bu 2
+It does not expose DSN, CHUNKING, BINARYMIME, REQUIRETLS, or DELIVERBY.
+.SH OPTIONS
+.TP
+.B \-\-username, \-u <value>
+account username (env PERCH_IMAP_USER)
+.TP
+.B \-\-password <value>
+account password (prefer PERCH_IMAP_PASSWORD or \-\-password\-file)
+.TP
+.B \-\-password\-file <value>
+read the account password from a file
+.TP
+.B \-\-password\-stdin
+read the account password from stdin
+.TP
+.B \-\-timeout <value>
+connection timeout (default: 30s)
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-smtp\-server, \-S <value>
+SMTP submission server (smtps://host, smtp://host, or host[:port]); defaults from \-\-config
+.TP
+.B \-\-smtp\-plaintext
+connect to SMTP without TLS (use only on trusted networks)
+.TP
+.B \-\-smtp\-starttls
+require STARTTLS for SMTP
+.TP
+.B \-\-smtp\-implicit\-tls
+use implicit TLS for SMTP (usually port 465)
+.TP
+.B \-\-smtp\-insecure
+skip SMTP TLS certificate verification
+.TP
+.B \-\-smtp\-ca\-file <value>
+PEM CA bundle used to verify the SMTP server certificate
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch mail caps
+
+perch mail caps \-\-smtp\-server smtp.mxraven.email:587
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-mail\fR(1)

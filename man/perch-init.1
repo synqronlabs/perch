@@ -1,0 +1,52 @@
+.TH "PERCH-INIT" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-init \- create a local configuration and optional first account
+.SH SYNOPSIS
+.B perch init [OPTIONS]
+.SH DESCRIPTION
+.PP
+init writes a self\-contained perch.yaml and initializes the SQLite database without contacting mxRaven. It is intended for local testing or for deployments where mxRaven is provisioned separately.
+.PP
+If \-\-email is set, init also creates the first account and its default mailbox set. Use \-\-self\-signed to generate a local TLS certificate for LAN clients.
+.SH NOTES
+.IP \(bu 2
+The config is written with mode 0600 and the data directory with mode 0700.
+.IP \(bu 2
+\-\-force overwrites an existing configuration.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-data\-dir <value>
+data directory
+.TP
+.B \-\-hostname <value>
+server hostname (default: "localhost")
+.TP
+.B \-\-email <value>
+first account email
+.TP
+.B \-\-name <value>
+first account display name
+.TP
+.B \-\-password <value>
+first account password (prompted when empty)
+.TP
+.B \-\-self\-signed
+generate a self\-signed TLS certificate
+.TP
+.B \-\-force
+overwrite an existing configuration
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch init \-\-data\-dir ~/.local/share/perch \-\-hostname localhost \-\-email you@example.com
+
+perch init \-\-self\-signed \-\-hostname mail.lan \-\-email you@example.com
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1)
