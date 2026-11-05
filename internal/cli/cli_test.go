@@ -104,7 +104,7 @@ func TestSetupWithoutTokenRequiresClientID(t *testing.T) {
 	_, errOut := captureOutput(t, func() {
 		code = Run([]string{
 			"setup", "--workspace", "demo", "--domain", "example.com",
-			"--data-dir", dir,
+			"--data-dir", dir, "--client-id", "",
 		})
 	})
 	if code != 1 {

@@ -36,7 +36,7 @@ The access token is held in memory for the setup run only and is never written t
 | `--token <value>` | control-plane bearer token for non-interactive use (otherwise approve perch in the browser) |
 | `--issuer <value>` | mxRaven identity issuer URL (default: "https://id.mxraven.com") |
 | `--dashboard-url <value>` | mxRaven dashboard URL used for connected-app approval (default: "https://app.mxraven.com") |
-| `--client-id <value>` | connected-app client ID (defaults to the registered perch client) |
+| `--client-id <value>` | connected-app client ID (defaults to the registered perch client) (default: "398301308521611673") |
 | `--no-browser` | print the approval URL without opening a browser |
 | `--base-url <value>` | control-plane base URL |
 | `--workspace <value>` | mxRaven workspace slug |
