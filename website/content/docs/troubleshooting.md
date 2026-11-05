@@ -13,6 +13,28 @@ perch doctor --config /etc/perch/perch.yaml
 S3 connectivity, and mxRaven listeners. Run it as the same user that runs
 `perch serve`.
 
+## Setup authorization fails
+
+- **The code expired.** Approval codes are short lived. Run `perch setup` again
+  and approve the new code.
+- **The workspace is not connected.** The workspace you approved in the
+  dashboard must match the `--workspace` value. Open the printed link again and
+  choose the right workspace.
+- **You cannot approve the application.** Approval requires the workspace owner
+  role. Operators and auditors can see connections but cannot create or revoke
+  them.
+- **No browser on this machine.** Use `--no-browser`, open the printed address
+  on another device, then leave the command running.
+- **No client ID configured.** perch releases include the registered client ID.
+  For a local build, set `MXRAVEN_CLIENT_ID` or pass `--client-id`.
+- **You need unattended setup.** Pass `--token` or set `MXRAVEN_API_TOKEN` with a
+  workspace-scoped API token. See
+  [Use an API token for automation](getting-started/mxraven-api-key.md).
+
+To revoke perch's access, open the workspace in the mxRaven dashboard and
+remove the connection under **Connected applications**. Revocation takes effect
+on the next API call.
+
 ## Mail clients cannot connect
 
 - Check the listener addresses in `perch.yaml`.

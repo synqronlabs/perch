@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/synqronlabs/perch/internal/config"
+	"github.com/synqronlabs/perch/internal/mxauth"
 	"github.com/synqronlabs/perch/internal/provision"
 	cli "github.com/urfave/cli/v3"
+	"golang.org/x/term"
 )
 
 func setupCommand() *cli.Command {
@@ -22,7 +24,11 @@ func setupCommand() *cli.Command {
 			configFlag(""),
 			&cli.StringFlag{Name: "data-dir", Usage: "data directory"},
 			&cli.StringFlag{Name: "hostname", Usage: "server hostname"},
-			&cli.StringFlag{Name: "token", Value: os.Getenv("MXRAVEN_API_TOKEN"), Usage: "control-plane bearer token"},
+			&cli.StringFlag{Name: "token", Value: os.Getenv("MXRAVEN_API_TOKEN"), Usage: "control-plane bearer token for non-interactive use (otherwise approve perch in the browser)"},
+			&cli.StringFlag{Name: "issuer", Value: envOrDefault("MXRAVEN_ISSUER", mxauth.DefaultIssuer), Usage: "mxRaven identity issuer URL"},
+			&cli.StringFlag{Name: "dashboard-url", Value: envOrDefault("MXRAVEN_DASHBOARD_URL", mxauth.DefaultDashboardURL), Usage: "mxRaven dashboard URL used for connected-app approval"},
+			&cli.StringFlag{Name: "client-id", Value: envOrDefault("MXRAVEN_CLIENT_ID", mxauth.DefaultClientID), Usage: "connected-app client ID (defaults to the registered perch client)"},
+			&cli.BoolFlag{Name: "no-browser", Usage: "print the approval URL without opening a browser"},
 			&cli.StringFlag{Name: "base-url", Usage: "control-plane base URL"},
 			&cli.StringFlag{Name: "workspace", Usage: "mxRaven workspace slug"},
 			&cli.StringFlag{Name: "domain", Usage: "mail domain"},
@@ -86,10 +92,7 @@ func runSetup(ctx context.Context, cmd *cli.Command) error {
 		(mtaMessageRate <= 0 || mtaRecipientRate <= 0 || mtaTaskRate <= 0) {
 		return errors.New("--mta-message-rate, --mta-recipient-rate, and --mta-task-rate must all be set together")
 	}
-	token := cmd.String("token")
-	if token == "" {
-		return errors.New("--token or MXRAVEN_API_TOKEN is required")
-	}
+	token := strings.TrimSpace(cmd.String("token"))
 	dir := cmd.String("data-dir")
 	if dir == "" {
 		dir = config.Default().DataDir
@@ -189,6 +192,47 @@ func runSetup(ctx context.Context, cmd *cli.Command) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+	var tokenSource func(context.Context, string) (string, error)
+	if token == "" && !cmd.Bool("dry-run") {
+		authCfg := mxauth.Config{
+			Issuer:       cmd.String("issuer"),
+			DashboardURL: cmd.String("dashboard-url"),
+			ClientID:     cmd.String("client-id"),
+		}
+		if err := authCfg.Validate(); err != nil {
+			return err
+		}
+		auth, err := mxauth.Start(ctx, authCfg)
+		if err != nil {
+			return err
+		}
+		consentURL := auth.ConsentURL(authCfg.DashboardURL)
+		fmt.Fprintln(os.Stderr, "Approve perch in your browser:")
+		fmt.Fprintf(os.Stderr, "  %s\n\n", consentURL)
+		fmt.Fprintf(os.Stderr, "Code: %s\n\n", auth.UserCode)
+		if !cmd.Bool("no-browser") && term.IsTerminal(int(os.Stderr.Fd())) {
+			if err := mxauth.OpenBrowser(consentURL); err != nil {
+				fmt.Fprintf(os.Stderr, "Could not open a browser: %v\n", err)
+			}
+		}
+		fmt.Fprintln(os.Stderr, "Waiting for approval...")
+		authToken, err := mxauth.Wait(ctx, authCfg, auth)
+		if err != nil {
+			switch {
+			case errors.Is(err, mxauth.ErrAccessDenied):
+				return errors.New("mxRaven access was denied")
+			case errors.Is(err, mxauth.ErrExpired):
+				return errors.New("the mxRaven approval code expired; run perch setup again")
+			default:
+				return fmt.Errorf("authorize perch with mxRaven: %w", err)
+			}
+		}
+		source := mxauth.NewTokenSource(authCfg, authToken)
+		tokenSource = func(ctx context.Context, _ string) (string, error) {
+			return source.Token(ctx)
+		}
+		fmt.Fprintln(os.Stderr, "Authorized.")
+	}
 	var rateLimit *provision.RateLimit
 	if mtaMessageRate > 0 || mtaRecipientRate > 0 || mtaTaskRate > 0 || mtaBurst > 0 || mtaConcurrency > 0 {
 		burst := int32(mtaBurst)
@@ -205,7 +249,7 @@ func runSetup(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 	result, err := provision.Run(ctx, provision.Options{
-		BaseURL: cmd.String("base-url"), Token: token, Tenant: workspace, Hostname: cfg.Hostname,
+		BaseURL: cmd.String("base-url"), Token: token, TokenSource: tokenSource, Tenant: workspace, Hostname: cfg.Hostname,
 		DataDir: dir, Domain: domain, InboundDomain: cmd.String("inbound-domain"),
 		SendingDomain: cmd.String("sending-domain"), EnableSubmission: !cmd.Bool("no-submission"),
 		Storage: cfg.Storage, DryRun: cmd.Bool("dry-run"),
@@ -245,10 +289,18 @@ func runSetup(ctx context.Context, cmd *cli.Command) error {
 		fmt.Println()
 	}
 	if cmd.Bool("wait") {
-		if err := provision.WaitForDNS(ctx, cmd.String("base-url"), token, workspace, result,
-			cmd.Duration("wait-interval"), cmd.Duration("wait-timeout"), func(format string, args ...any) {
+		if err := provision.WaitForDNS(ctx, provision.DNSWaitOptions{
+			BaseURL:     cmd.String("base-url"),
+			Token:       token,
+			TokenSource: tokenSource,
+			Tenant:      workspace,
+			Result:      result,
+			Interval:    cmd.Duration("wait-interval"),
+			Timeout:     cmd.Duration("wait-timeout"),
+			Logf: func(format string, args ...any) {
 				fmt.Printf(format+"\n", args...)
-			}); err != nil {
+			},
+		}); err != nil {
 			return err
 		}
 	}

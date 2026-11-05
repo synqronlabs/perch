@@ -1,49 +1,35 @@
-(() => {
-  const typed = document.querySelector("[data-typewriter]");
-  if (!typed) return;
+(function () {
+  var rotator = document.querySelector(".hero-title__rotator");
+  if (!rotator) return;
 
-  let words;
-  try {
-    words = JSON.parse(typed.dataset.typewriter || "[]");
-  } catch {
+  var words = Array.prototype.slice.call(rotator.querySelectorAll(".hero-title__word"));
+  if (words.length < 2) return;
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    words[0].textContent = "you, your agent, or your app";
+    words[0].dataset.state = "active";
+    words.slice(1).forEach(function (word) {
+      word.dataset.state = "leave";
+    });
     return;
   }
-  if (!Array.isArray(words) || words.length === 0) return;
 
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduced) {
-    typed.textContent = words[0];
-    return;
+  var index = 0;
+
+  function cycle() {
+    var current = words[index];
+    index = (index + 1) % words.length;
+    var next = words[index];
+
+    next.dataset.state = "enter";
+    // Read a layout value so the entering word starts below the frame before
+    // the active transition moves it into place.
+    void next.offsetWidth;
+    current.dataset.state = "leave";
+    next.dataset.state = "active";
+
+    window.setTimeout(cycle, 2400);
   }
 
-  let word = 0;
-  let char = 0;
-  let deleting = false;
-
-  const tick = () => {
-    const current = words[word];
-    if (!deleting) {
-      char += 1;
-      typed.textContent = current.slice(0, char);
-      if (char === current.length) {
-        deleting = true;
-        window.setTimeout(tick, 1700);
-        return;
-      }
-      window.setTimeout(tick, 72 + Math.random() * 46);
-      return;
-    }
-
-    char -= 1;
-    typed.textContent = current.slice(0, char);
-    if (char === 0) {
-      deleting = false;
-      word = (word + 1) % words.length;
-      window.setTimeout(tick, 260);
-      return;
-    }
-    window.setTimeout(tick, 34);
-  };
-
-  tick();
+  window.setTimeout(cycle, 2200);
 })();

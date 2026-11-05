@@ -1,0 +1,6 @@
+IBM Plex Sans and IBM Plex Mono (Google Fonts builds v23 and v20)
+
+Copyright (c) 2017 IBM Corp. with Reserved Font Name "Plex".
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+https://github.com/IBM/plex
+https://fonts.google.com/specimen/IBM+Plex+Sans/license

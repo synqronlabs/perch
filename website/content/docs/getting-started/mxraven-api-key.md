@@ -1,11 +1,14 @@
 ---
-title: Create an mxRaven API key
-weight: 15
+title: Use an API token for automation
+weight: 16
+description: Pass a workspace-scoped ZITADEL token to perch setup for CI.
 ---
 
-`perch setup` needs an mxRaven API key to provision your workspace. mxRaven
-uses [ZITADEL](https://zitadel.com) for identity, so the key is a **Personal
-Access Token (PAT)** on a ZITADEL service account.
+`perch setup` normally asks you to approve perch in the browser. For CI or
+other unattended environments, you can pass a **Personal Access Token (PAT)**
+instead. This is the legacy machine-access path; prefer
+[device authorization](authorize-perch.md) when a human can approve the
+application.
 
 This is a control-plane token, not a listener API key. perch uses it only during
 setup to create the domain, listeners, routes, and listener credentials, and

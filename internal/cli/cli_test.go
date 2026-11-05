@@ -3,6 +3,7 @@ package cli
 import (
 	"io"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -73,5 +74,43 @@ func TestVersionOutput(t *testing.T) {
 	}
 	if want := "perch " + version() + "\n"; out != want {
 		t.Fatalf("output = %q, want %q", out, want)
+	}
+}
+
+func TestSetupDryRunDoesNotRequireAuthorization(t *testing.T) {
+	t.Setenv("MXRAVEN_API_TOKEN", "")
+	t.Setenv("MXRAVEN_CLIENT_ID", "")
+	dir := t.TempDir()
+	var code int
+	out, _ := captureOutput(t, func() {
+		code = Run([]string{
+			"setup", "--workspace", "demo", "--domain", "example.com",
+			"--dry-run", "--data-dir", dir,
+		})
+	})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !strings.Contains(out, "would create or reuse sending domain example.com") {
+		t.Fatalf("output = %q", out)
+	}
+}
+
+func TestSetupWithoutTokenRequiresClientID(t *testing.T) {
+	t.Setenv("MXRAVEN_API_TOKEN", "")
+	t.Setenv("MXRAVEN_CLIENT_ID", "")
+	dir := t.TempDir()
+	var code int
+	_, errOut := captureOutput(t, func() {
+		code = Run([]string{
+			"setup", "--workspace", "demo", "--domain", "example.com",
+			"--data-dir", dir,
+		})
+	})
+	if code != 1 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !strings.Contains(errOut, "no client ID configured") {
+		t.Fatalf("stderr = %q", errOut)
 	}
 }

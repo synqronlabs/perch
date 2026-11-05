@@ -1,0 +1,17 @@
+<nav aria-label="Documentation">
+  <p class="docs-menu-label">Documentation</p>
+  {{ partial "docs/search" . }}
+  {{ partial "docs/inject/menu-before" . }}
+  {{ partial "docs/menu-filetree" . }}
+  {{ partial "docs/inject/menu-after" . }}
+  <p class="docs-menu-foot">
+    <a href="https://github.com/synqronlabs/perch">GitHub</a>
+    <span aria-hidden="true">·</span>
+    <a href="https://github.com/synqronlabs/perch/releases">Releases</a>
+  </p>
+</nav>
+
+{{ $script := resources.Get "menu-reset.js" | resources.Minify }}
+{{ with $script.Content }}
+  <script>{{ . | safeJS }}</script>
+{{ end }}

@@ -1,0 +1,31 @@
+{{- $home := .Site.Home.RelPermalink -}}
+<header class="site-header">
+  <a class="site-wordmark" href="{{ $home }}" aria-label="perch home">
+    <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <path d="M16 44 L44 16 L52 24 H44 V44 Z M10 50 L16 44 V50 Z"></path>
+      <path d="M30 30 L37 37 L44 30"></path>
+      <line x1="8" y1="44" x2="56" y2="44"></line>
+    </svg>
+    <span>perch</span>
+  </a>
+  <a class="site-byline" href="https://mxraven.com">by mxRaven</a>
+
+  <nav class="site-nav" aria-label="Primary">
+    {{ range .Site.Menus.home }}
+      {{ $url := .URL }}
+      {{ with .Page }}{{ $url = .RelPermalink }}{{ end }}
+      <a href="{{ $url }}" {{ if eq $.RelPermalink $url }}aria-current="page"{{ end }}>{{ .Name }}</a>
+    {{ end }}
+  </nav>
+
+  <details class="site-menu">
+    <summary>Menu</summary>
+    <ul>
+      {{ range .Site.Menus.home }}
+        {{ $url := .URL }}
+        {{ with .Page }}{{ $url = .RelPermalink }}{{ end }}
+        <li><a href="{{ $url }}" {{ if eq $.RelPermalink $url }}aria-current="page"{{ end }}>{{ .Name }}</a></li>
+      {{ end }}
+    </ul>
+  </details>
+</header>

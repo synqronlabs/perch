@@ -1,18 +1,22 @@
 ---
 layout: landing
 title: perch
+description: A single-binary IMAP and SMTP server with a POSIX CLI, by mxRaven.
 ---
 
 <section class="hero">
   <div class="landing-wrap">
-    <h1 class="hero-title">
-      <span class="sr-only">Open source inbox for you, your agent, or your application in 1 file.</span>
-      <span aria-hidden="true">Open source inbox for <span class="typed" data-typewriter='["you","your agent","your application"]'>you</span><span class="type-cursor" aria-hidden="true"></span> <span class="accent">in 1 file.</span></span>
+    <h1 class="hero-title" aria-label="Open source inbox for you, your agent, or your app">
+      <span class="hero-title__lead" aria-hidden="true">Open source inbox for</span>
+      <span class="hero-title__rotator" aria-hidden="true">
+        <span class="hero-title__word" data-state="active">you</span>
+        <span class="hero-title__word">your agent</span>
+        <span class="hero-title__word">your app</span>
+      </span>
     </h1>
-    <p class="hero-lede">A single-binary IMAP + SMTP server with a POSIX CLI</p>
-    <div class="actions">
-      <a class="btn btn-primary" href="{{< relref "/docs/getting-started/installation" >}}">Get started</a>
-      <a class="btn btn-secondary" href="https://github.com/synqronlabs/perch">View on GitHub</a>
+    <div class="hero-actions">
+      <a class="button button--primary" href="{{< relref "/docs/getting-started/installation" >}}">Get started</a>
+      <a class="button button--secondary" href="https://github.com/synqronlabs/perch">View on GitHub</a>
     </div>
     <div class="install" aria-label="Install command">
       <span class="prompt">$</span>
@@ -78,10 +82,9 @@ title: perch
   </div>
 </section>
 
-<section class="section" id="agents">
+<section class="section section--agent" id="agents">
   <div class="landing-wrap agent">
     <div class="agent-copy">
-      <p class="eyebrow">Built for agents and harnesses</p>
       <h2>Give your agent a real inbox.</h2>
       <p>
         No browser sessions, no scraping, no vendor-specific mailbox API. Your
@@ -114,14 +117,3 @@ title: perch
     </div>
   </div>
 </section>
-
-<footer class="landing-footer">
-  <div class="landing-wrap">
-    <span>perch by <a href="https://mxraven.com">mxRaven</a> is open source under MIT-0.</span>
-    <span>
-      <a href="{{< relref "/docs" >}}">Docs</a> ·
-      <a href="https://github.com/synqronlabs/perch">GitHub</a> ·
-      <a href="https://github.com/synqronlabs/perch/releases">Releases</a>
-    </span>
-  </div>
-</footer>

@@ -21,14 +21,15 @@ sudo useradd --system --home-dir /var/lib/perch --shell /usr/sbin/nologin perch
 sudo install -Dm0755 perch /usr/local/bin/perch
 sudo install -d -m 0700 -o perch -g perch /etc/perch /var/lib/perch
 
-# Provision mxRaven and write the config as the service user.
-sudo -u perch -H env MXRAVEN_API_TOKEN=... \
-  /usr/local/bin/perch setup \
+# Provision mxRaven and write the config as the service user. The device code
+# is printed; approve it from a browser, or pass --token for unattended setup.
+sudo -u perch -H /usr/local/bin/perch setup \
   --config /etc/perch/perch.yaml \
   --data-dir /var/lib/perch \
   --workspace my-workspace \
   --domain example.com \
-  --hostname mail.example.com
+  --hostname mail.example.com \
+  --no-browser
 
 # Create the first mailbox.
 sudo -u perch -H /usr/local/bin/perch account add \
