@@ -109,7 +109,7 @@
   align-items: center;
   gap: 0.625rem;
   max-width: 100%;
-  margin-top: 0.5rem;
+  margin-top: 1.25rem;
   padding: 0.625rem 0.875rem;
   border: 1px solid var(--theme-line);
   border-radius: var(--radius);
@@ -117,7 +117,22 @@
   color: var(--theme-muted);
   font-family: var(--font-mono);
   font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
   overflow-x: auto;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.install:hover {
+  border-color: color-mix(in srgb, var(--theme-foreground) 30%, var(--theme-line));
+  background: var(--theme-surface-muted);
+}
+
+.install:focus-visible {
+  outline: 2px solid var(--theme-brand);
+  outline-offset: 2px;
 }
 
 .install code {
@@ -133,6 +148,29 @@
 
 .install .prompt {
   color: var(--theme-brand);
+}
+
+.install__action {
+  flex: 0 0 auto;
+  padding-left: 0.625rem;
+  border-left: 1px solid var(--theme-line);
+  color: var(--theme-muted);
+  font: 600 0.625rem/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.install:hover .install__action {
+  color: var(--theme-foreground);
+}
+
+.install[data-copied="true"] {
+  border-color: color-mix(in srgb, var(--theme-positive) 55%, var(--theme-line));
+}
+
+.install[data-copied="true"] .prompt,
+.install[data-copied="true"] .install__action {
+  color: var(--theme-positive);
 }
 
 /* ---------- Sections ---------- */
