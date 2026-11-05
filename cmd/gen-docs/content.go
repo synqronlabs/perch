@@ -47,22 +47,27 @@ var commandDocs = map[string]commandDoc{
 	"perch setup": {
 		Summary: "create the mxRaven domain, listeners, keys, and routes",
 		Paragraphs: []string{
-			"setup calls the mxRaven control plane to provision a workspace domain, MTA listener, optional submission listener, API keys, inbound route, sending-domain policy, and optional S3_STORE rule. It then writes perch.yaml.",
-			"The control-plane token is used only during setup and is never written to the config. Listener and S3 secrets are written inline unless you replace them with *_env references.",
+			"setup asks mxRaven for a device code, prints the dashboard approval address, and waits for a workspace owner to approve the perch connected application. After approval it provisions a workspace domain, MTA listener, optional submission listener, API keys, inbound route, sending-domain policy, and optional S3_STORE rule, then writes perch.yaml.",
+			"The access token is held in memory for the setup run only and is never written to the config. Pass --token or set MXRAVEN_API_TOKEN to use a workspace-scoped API token instead of interactive approval. Listener and S3 secrets are written inline unless you replace them with *_env references.",
 		},
 		Examples: []string{
-			"export MXRAVEN_API_TOKEN=...",
 			"perch setup --config /etc/perch/perch.yaml --data-dir /var/lib/perch \\\n  --workspace my-workspace --domain example.com --hostname mail.example.com",
+			"perch setup ... --no-browser",
 			"perch setup ... --storage s3 --s3-bucket my-mail-archive --s3-region auto \\\n  --s3-endpoint https://<account>.r2.cloudflarestorage.com --s3-access-key <key>",
 			"perch setup ... --public --acme-email admin@example.com --acme-domain mail.example.com",
 		},
 		Notes: []string{
+			"Approval requires the workspace owner role. The workspace you approve must match --workspace.",
 			"Publish the DNS records printed by the wizard, or pass --wait to wait for verification.",
+			"Use --no-browser when the command runs over SSH or as a service user.",
 			"Use --no-submission for inbound-only deployments.",
 			"Rate-limit and policy flags map directly to mxRaven listener settings.",
 		},
 		Environment: []string{
-			"MXRAVEN_API_TOKEN  control-plane bearer token used by setup",
+			"MXRAVEN_API_TOKEN     legacy control-plane token for non-interactive setup",
+			"MXRAVEN_ISSUER        mxRaven identity issuer URL",
+			"MXRAVEN_DASHBOARD_URL mxRaven dashboard URL used for approval",
+			"MXRAVEN_CLIENT_ID     registered perch connected-app client ID",
 		},
 	},
 	"perch serve": {

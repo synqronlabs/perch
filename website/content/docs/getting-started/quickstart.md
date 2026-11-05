@@ -8,13 +8,11 @@ connects a mail client.
 
 ## 1. Provision mxRaven and generate config
 
-First [create an mxRaven API key](mxraven-api-key.md), then export it. With the
-token, `perch setup` configures your domain, inbound route, submission listener,
-spam/auth rules, and writes `perch.yaml`:
+Run `perch setup` with your workspace slug and domain. perch prints a code and
+opens the mxRaven dashboard so a workspace owner can approve the application.
+See [Authorize perch with mxRaven](authorize-perch.md) for the approval steps.
 
 ```sh
-export MXRAVEN_API_TOKEN=...
-
 perch setup \
   --config ~/.local/share/perch/perch.yaml \
   --data-dir ~/.local/share/perch \
@@ -23,8 +21,13 @@ perch setup \
   --hostname localhost
 ```
 
-Publish the DNS records printed by the wizard, or pass `--wait` to wait until
-DNS verifies.
+`perch setup` configures your domain, inbound route, submission listener,
+spam/auth rules, and writes `perch.yaml`. Publish the DNS records printed by the
+wizard, or pass `--wait` to wait until DNS verifies.
+
+For CI or a terminal without a browser, pass `--token` or set
+`MXRAVEN_API_TOKEN` instead. See
+[Use an API token for automation](mxraven-api-key.md).
 
 ## 2. Create an account and start the server
 

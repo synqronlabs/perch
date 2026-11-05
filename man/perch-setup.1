@@ -5,12 +5,16 @@ perch\-setup \- create the mxRaven domain, listeners, keys, and routes
 .B perch setup [OPTIONS]
 .SH DESCRIPTION
 .PP
-setup calls the mxRaven control plane to provision a workspace domain, MTA listener, optional submission listener, API keys, inbound route, sending\-domain policy, and optional S3_STORE rule. It then writes perch.yaml.
+setup asks mxRaven for a device code, prints the dashboard approval address, and waits for a workspace owner to approve the perch connected application. After approval it provisions a workspace domain, MTA listener, optional submission listener, API keys, inbound route, sending\-domain policy, and optional S3_STORE rule, then writes perch.yaml.
 .PP
-The control\-plane token is used only during setup and is never written to the config. Listener and S3 secrets are written inline unless you replace them with *_env references.
+The access token is held in memory for the setup run only and is never written to the config. Pass \-\-token or set MXRAVEN_API_TOKEN to use a workspace\-scoped API token instead of interactive approval. Listener and S3 secrets are written inline unless you replace them with *_env references.
 .SH NOTES
 .IP \(bu 2
+Approval requires the workspace owner role. The workspace you approve must match \-\-workspace.
+.IP \(bu 2
 Publish the DNS records printed by the wizard, or pass \-\-wait to wait for verification.
+.IP \(bu 2
+Use \-\-no\-browser when the command runs over SSH or as a service user.
 .IP \(bu 2
 Use \-\-no\-submission for inbound\-only deployments.
 .IP \(bu 2
@@ -27,7 +31,19 @@ data directory
 server hostname
 .TP
 .B \-\-token <value>
-control\-plane bearer token
+control\-plane bearer token for non\-interactive use (otherwise approve perch in the browser)
+.TP
+.B \-\-issuer <value>
+mxRaven identity issuer URL (default: "https://id.mxraven.com")
+.TP
+.B \-\-dashboard\-url <value>
+mxRaven dashboard URL used for connected\-app approval (default: "https://app.mxraven.com")
+.TP
+.B \-\-client\-id <value>
+connected\-app client ID (defaults to the registered perch client)
+.TP
+.B \-\-no\-browser
+print the approval URL without opening a browser
 .TP
 .B \-\-base\-url <value>
 control\-plane base URL
@@ -135,10 +151,10 @@ bind standard public ports (143/993/587/465)
 show help
 .SH EXAMPLES
 .nf
-export MXRAVEN_API_TOKEN=...
-
 perch setup \-\-config /etc/perch/perch.yaml \-\-data\-dir /var/lib/perch \\
   \-\-workspace my\-workspace \-\-domain example.com \-\-hostname mail.example.com
+
+perch setup ... \-\-no\-browser
 
 perch setup ... \-\-storage s3 \-\-s3\-bucket my\-mail\-archive \-\-s3\-region auto \\
   \-\-s3\-endpoint https://<account>.r2.cloudflarestorage.com \-\-s3\-access\-key <key>
@@ -148,7 +164,16 @@ perch setup ... \-\-public \-\-acme\-email admin@example.com \-\-acme\-domain ma
 .SH ENVIRONMENT
 .TP
 .B MXRAVEN_API_TOKEN
-control\-plane bearer token used by setup
+legacy control\-plane token for non\-interactive setup
+.TP
+.B MXRAVEN_ISSUER
+mxRaven identity issuer URL
+.TP
+.B MXRAVEN_DASHBOARD_URL
+mxRaven dashboard URL used for approval
+.TP
+.B MXRAVEN_CLIENT_ID
+registered perch connected\-app client ID
 .SH SEE ALSO
 .PP
 \fBperch\fR(1)

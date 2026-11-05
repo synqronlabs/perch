@@ -28,6 +28,7 @@ type Record struct {
 type Options struct {
 	BaseURL                  string
 	Token                    string
+	TokenSource              func(ctx context.Context, operation string) (string, error)
 	Tenant                   string
 	Hostname                 string
 	DataDir                  string
@@ -67,9 +68,6 @@ type Result struct {
 // Run creates or reuses the mxRaven resources. It never stores the
 // control-plane token.
 func Run(ctx context.Context, opts Options) (*Result, error) {
-	if strings.TrimSpace(opts.Token) == "" {
-		return nil, errors.New("provision: control-plane token is required")
-	}
 	if strings.TrimSpace(opts.Tenant) == "" {
 		return nil, errors.New("provision: workspace slug is required")
 	}
@@ -117,7 +115,15 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		return result, nil
 	}
 
-	adminOpts := []admin.Option{admin.WithToken(opts.Token)}
+	if strings.TrimSpace(opts.Token) == "" && opts.TokenSource == nil {
+		return nil, errors.New("provision: control-plane token is required")
+	}
+	adminOpts := []admin.Option{}
+	if opts.TokenSource != nil {
+		adminOpts = append(adminOpts, admin.WithTokenSource(opts.TokenSource))
+	} else {
+		adminOpts = append(adminOpts, admin.WithToken(opts.Token))
+	}
 	if strings.TrimSpace(opts.BaseURL) != "" {
 		adminOpts = append(adminOpts, admin.WithBaseURL(opts.BaseURL))
 	}
@@ -376,30 +382,57 @@ func storageRef(_ config.S3Config, domain string) string {
 	return "perch-" + strings.ReplaceAll(domain, ".", "-")
 }
 
+// DNSWaitOptions controls mxRaven DNS verification polling.
+type DNSWaitOptions struct {
+	BaseURL     string
+	Token       string
+	TokenSource func(ctx context.Context, operation string) (string, error)
+	Tenant      string
+	Result      *Result
+	Interval    time.Duration
+	Timeout     time.Duration
+	Logf        func(string, ...any)
+}
+
 // WaitForDNS polls mxRaven until the sending domain and inbound route are
 // verified, or the timeout expires.
-func WaitForDNS(ctx context.Context, baseURL, token, tenant string, result *Result, interval, timeout time.Duration, logf func(string, ...any)) error {
+func WaitForDNS(ctx context.Context, opts DNSWaitOptions) error {
+	result := opts.Result
 	if result == nil || result.DomainID == uuid.Nil {
 		return errors.New("provision: result has no domain to verify")
 	}
+	if strings.TrimSpace(opts.Tenant) == "" {
+		return errors.New("provision: workspace slug is required")
+	}
+	interval := opts.Interval
 	if interval <= 0 {
 		interval = 15 * time.Second
 	}
+	timeout := opts.Timeout
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
 	}
+	logf := opts.Logf
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	adminOpts := []admin.Option{admin.WithToken(token)}
-	if strings.TrimSpace(baseURL) != "" {
-		adminOpts = append(adminOpts, admin.WithBaseURL(baseURL))
+	adminOpts := []admin.Option{}
+	if opts.TokenSource != nil {
+		adminOpts = append(adminOpts, admin.WithTokenSource(opts.TokenSource))
+	} else {
+		if strings.TrimSpace(opts.Token) == "" {
+			return errors.New("provision: control-plane token is required")
+		}
+		adminOpts = append(adminOpts, admin.WithToken(opts.Token))
+	}
+	if strings.TrimSpace(opts.BaseURL) != "" {
+		adminOpts = append(adminOpts, admin.WithBaseURL(opts.BaseURL))
 	}
 	client, err := admin.New(adminOpts...)
 	if err != nil {
 		return fmt.Errorf("create mxRaven admin client: %w", err)
 	}
-	ws := client.Workspace(tenant)
+	ws := client.Workspace(opts.Tenant)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	ticker := time.NewTicker(interval)

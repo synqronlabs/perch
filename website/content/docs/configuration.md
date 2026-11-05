@@ -71,8 +71,9 @@ mxraven:
 ```
 
 Secrets can be inline (protected by file permissions) or referenced through
-environment variables. The mxRaven control-plane token is used only by
-`perch setup` and is never written to the config.
+environment variables. The mxRaven control-plane credential is used only by
+`perch setup` and is never written to the config. Setup normally uses browser
+approval; `MXRAVEN_API_TOKEN` selects the legacy token path.
 
 ## Environment overrides
 
@@ -86,7 +87,10 @@ environment variables. The mxRaven control-plane token is used only by
 | `PERCH_S3_SECRET_KEY` | Default S3 secret environment variable |
 | `PERCH_MXRAVEN_KEY_SECRET` | mxRaven MTA listener secret |
 | `PERCH_MXRAVEN_SUBMISSION_KEY_SECRET` | mxRaven submission listener secret |
-| `MXRAVEN_API_TOKEN` | Control-plane token used by `perch setup` |
+| `MXRAVEN_API_TOKEN` | Legacy control-plane token for non-interactive setup |
+| `MXRAVEN_ISSUER` | Override the mxRaven identity issuer URL |
+| `MXRAVEN_DASHBOARD_URL` | Override the mxRaven dashboard approval URL |
+| `MXRAVEN_CLIENT_ID` | Override the registered perch connected-app client ID |
 
 ## TLS
 

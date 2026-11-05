@@ -1,0 +1,27 @@
+{{- if .IsPage -}}
+<header class="docs-head">
+  {{- if ne .RelPermalink "/docs/" -}}
+  <nav class="docs-crumbs" aria-label="Breadcrumb">
+    <ol>
+      <li><a href="{{ "docs/" | relURL }}">Docs</a></li>
+      {{- with .Parent -}}
+        {{- if ne .RelPermalink "/docs/" -}}
+        <li>{{ if .IsSection }}<a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ else }}{{ .Title }}{{ end }}</li>
+        {{- end -}}
+      {{- end -}}
+      <li aria-current="page">{{ .Title }}</li>
+    </ol>
+  </nav>
+  {{- end -}}
+  <h1>{{ .Title }}</h1>
+  {{- with .Description -}}
+  <p class="docs-lede">{{ . }}</p>
+  {{- end -}}
+  {{- with .TableOfContents -}}
+  <details class="docs-toc-mobile">
+    <summary>On this page</summary>
+    {{ . }}
+  </details>
+  {{- end -}}
+</header>
+{{- end -}}

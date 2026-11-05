@@ -1,49 +1,7 @@
-{{ define "menu-container" }}
-<!-- landing page has no sidebar -->
-{{ end }}
-
-{{ define "toc-container" }}
-<!-- landing page has no table of contents -->
-{{ end }}
-
-{{ define "footer" }}
-<!-- landing page has its own footer -->
-{{ end }}
-
-{{ define "breadcrumbs" }}
-<!-- landing page has no breadcrumbs -->
-{{ end }}
-
-{{ define "header" }}
-<nav class="landing-nav" aria-label="Main">
-  <div class="landing-nav-inner">
-    <div class="landing-brand-group">
-      <a class="landing-brand" href="{{ .Site.Home.RelPermalink }}" aria-label="perch home">
-        <svg class="landing-brand-mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-          <path d="M16 44 L44 16 L52 24 H44 V44 Z M10 50 L16 44 V50 Z" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>
-          <path d="M30 30 L37 37 L44 30" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>
-          <line x1="8" y1="44" x2="56" y2="44" stroke="currentColor" stroke-width="4" stroke-linecap="round"></line>
-        </svg>
-        <span>perch</span>
-      </a>
-      <a class="landing-brand-by" href="https://mxraven.com">by mxRaven</a>
-    </div>
-    <div class="landing-nav-links">
-      {{ range .Site.Menus.home }}
-        {{ $url := .URL }}
-        {{ with .Page }}{{ $url = .RelPermalink }}{{ end }}
-        <a href="{{ $url }}">{{ .Name }}</a>
-      {{ end }}
-    </div>
-  </div>
-</nav>
-{{ end }}
-
 {{ define "main" }}
 <div class="landing">
   {{ .Content }}
 </div>
-{{ with resources.Get "landing.js" | resources.Minify }}
-<script>{{ .Content | safeJS }}</script>
-{{ end }}
+{{ $script := resources.Get "landing.js" | resources.Minify | resources.Fingerprint }}
+<script src="{{ $script.RelPermalink }}" integrity="{{ $script.Data.Integrity }}" defer></script>
 {{ end }}

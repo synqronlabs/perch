@@ -28,7 +28,10 @@ var environment = []string{
 	"PERCH_S3_SECRET_KEY    S3 secret when storage.s3.secret_key_env selects it",
 	"PERCH_MXRAVEN_KEY_SECRET              mxRaven MTA listener secret",
 	"PERCH_MXRAVEN_SUBMISSION_KEY_SECRET   mxRaven submission listener secret",
-	"MXRAVEN_API_TOKEN      control-plane token used by perch setup",
+	"MXRAVEN_API_TOKEN      legacy control-plane token used by perch setup",
+	"MXRAVEN_ISSUER         mxRaven identity issuer URL",
+	"MXRAVEN_DASHBOARD_URL  mxRaven dashboard URL used for connected-app approval",
+	"MXRAVEN_CLIENT_ID      registered perch connected-app client ID",
 }
 
 type docNode struct {

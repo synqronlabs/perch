@@ -1,0 +1,13 @@
+# Declares the order of CSS files. The first eight come from Hugo Book; the
+# perch layers follow so they win the cascade without relying on !important.
+- normalize.css
+- variables.css
+- utils.css
+- book.css
+- markdown.css
+- shortcodes.css
+- print.css
+- themes.css
+- brand.css
+- docs.css
+- landing.css

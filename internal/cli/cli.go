@@ -167,6 +167,13 @@ func defaultConfigPath() string {
 	return filepath.Join(config.Default().DataDir, "perch.yaml")
 }
 
+func envOrDefault(name, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+	return fallback
+}
+
 func newLogger(cfg config.LogConfig) *slog.Logger {
 	level := slog.LevelInfo
 	switch strings.ToLower(cfg.Level) {

@@ -24,6 +24,25 @@ make website
 
 The generated output is written to `website/public` and is ignored by git.
 
+## Design system
+
+The site uses the same visual language as mxRaven's website and dashboard:
+
+- `assets/styles/brand.css` owns the palette, typography, controls, and site
+  chrome. Its tokens mirror
+  `mxraven/apps/dashboard-v2/src/routes/layout.css` and
+  `mxraven/apps/site/src/styles/global.css`; keep the three in step.
+- `assets/styles/docs.css` styles the Hugo Book docs shell.
+- `assets/styles/landing.css` styles the home page.
+- `assets/styles/index.yaml` declares the Book CSS order and appends the perch
+  layers.
+- IBM Plex Sans and IBM Plex Mono are self-hosted from `static/fonts/` under the
+  SIL OFL. See `static/fonts/OFL.txt`.
+
+`layouts/baseof.html` wraps Book's three-column docs layout with the perch site
+header and footer. `layouts/_partials/docs/page-head.html` adds the breadcrumb,
+page title, and description that Book does not render by default.
+
 ## Generated content
 
 Do not edit these by hand:

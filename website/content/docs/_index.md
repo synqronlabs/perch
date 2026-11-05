@@ -10,6 +10,6 @@ provisioning, storage, TLS, operations, and the `perch` command-line client.
 
 Start with [Installation](getting-started/installation.md) and the
 [Quickstart](getting-started/quickstart.md). Before provisioning, follow
-[Create an mxRaven API key](getting-started/mxraven-api-key.md). Then use the
+[Authorize perch with mxRaven](getting-started/authorize-perch.md). Then use the
 [CLI reference](cli/_index.md) for command details. For agent and application
 patterns, see [Agents and applications](mail/agents.md).
