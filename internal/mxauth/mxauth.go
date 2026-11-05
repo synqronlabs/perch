@@ -30,9 +30,10 @@ const (
 	// DefaultDashboardURL is the production consent surface.
 	DefaultDashboardURL = "https://app.mxraven.com"
 
-	// DefaultClientID is filled in after the perch connected application is
-	// registered. Until then callers can set --client-id or MXRAVEN_CLIENT_ID.
-	DefaultClientID = ""
+	// DefaultClientID is the public client identifier of the production
+	// "perch" connected application. It is not a secret; callers can override
+	// it with --client-id or MXRAVEN_CLIENT_ID for staging or local builds.
+	DefaultClientID = "398301308521611673"
 
 	// DeviceGrantType is the RFC 8628 device-code grant.
 	DeviceGrantType = "urn:ietf:params:oauth:grant-type:device_code"

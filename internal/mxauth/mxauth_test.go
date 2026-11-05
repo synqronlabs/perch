@@ -158,3 +158,9 @@ func TestValidateRequiresClientID(t *testing.T) {
 		t.Fatal("expected an error without a client ID")
 	}
 }
+
+func TestDefaultClientIDConfigured(t *testing.T) {
+	if DefaultClientID == "" {
+		t.Fatal("production connected-app client ID is not configured")
+	}
+}
