@@ -18,10 +18,12 @@ description: A single-binary IMAP and SMTP server with a POSIX CLI, by mxRaven.
       <a class="button button--primary" href="{{< relref "/docs/getting-started/installation" >}}">Get started</a>
       <a class="button button--secondary" href="https://github.com/synqronlabs/perch">View on GitHub</a>
     </div>
-    <div class="install" aria-label="Install command">
-      <span class="prompt">$</span>
+    <button class="install" type="button" aria-label="Copy install command">
+      <span class="prompt" aria-hidden="true">$</span>
       <code>go install github.com/synqronlabs/perch/cmd/perch@latest</code>
-    </div>
+      <span class="install__action" aria-hidden="true">Copy</span>
+    </button>
+    <span class="sr-only" role="status" aria-live="polite" data-copy-status></span>
   </div>
 </section>
 
