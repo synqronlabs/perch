@@ -38,7 +38,7 @@ Live and verified:
 - submission listener default terminal action `REJECT`
 - one allow rule: `len(envelope.rcpt_to) <= 5 && all(envelope.rcpt_to, # endsWith "@tryperch.mxraven.com")`
 - Let's Encrypt certificate for `tryperch.mxraven.com` and `mail.tryperch.mxraven.com`
-- session API, web UI, terminal containers, IMAPS/SMTPS frontend
+- session API, vendored xterm.js web UI, disposable terminal containers, IMAPS/SMTPS frontend
 - public ports 443, 993, and 465 open
 - self-send accepted, delivered through mxRaven, and stored in the demo inbox
 - external recipient rejected with `550 5.7.1 The perch live demo only accepts @tryperch.mxraven.com recipients`
