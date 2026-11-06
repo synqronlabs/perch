@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>perch live demo</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐦</text></svg>">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+<style>
+:root {
+  --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+  --muted: #8b949e; --accent: #58a6ff; --green: #3fb950; --red: #f85149;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); }
+header { max-width: 1120px; margin: 0 auto; padding: 28px 20px 12px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+header h1 { font-size: 24px; margin: 0; letter-spacing: -0.02em; }
+header .tag { color: var(--muted); font-size: 14px; }
+main { max-width: 1120px; margin: 0 auto; padding: 0 20px 60px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin: 16px 0; }
+.hero { display: flex; gap: 24px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.hero p { margin: 0; color: var(--muted); max-width: 680px; }
+button { background: var(--accent); color: #04101f; border: 0; border-radius: 8px; padding: 10px 16px; font-weight: 650; font-size: 15px; cursor: pointer; }
+button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+button.danger { background: transparent; color: var(--red); border: 1px solid #5b2529; }
+button:disabled { opacity: .5; cursor: default; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; }
+@media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+.label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+.value { font-family: var(--mono); font-size: 14px; background: #0b0f14; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.value span { overflow-wrap: anywhere; }
+.copy { background: transparent; color: var(--accent); border: 1px solid var(--border); padding: 4px 8px; font-size: 12px; }
+.stack > * + * { margin-top: 14px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.warn { color: #d29922; }
+.terminal-wrap { background: #010409; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.terminal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; background: #0d1117; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+#terminal { height: 480px; padding: 8px; }
+@media (max-width: 860px) { #terminal { height: 42vh; } }
+pre.snippet { margin: 0; background: #0b0f14; border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow: auto; font-family: var(--mono); font-size: 13px; color: #c9d1d9; }
+#notice { display: none; }
+.hidden { display: none !important; }
+.badge { display: inline-block; border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; font-size: 12px; color: var(--muted); }
+.kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; font-size: 14px; }
+.kv div:nth-child(odd) { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>perch live demo</h1>
+  <span class="tag">a disposable inbox for trying perch and IMAP/SMTP</span>
+</header>
+<main>
+  <section class="card hero">
+    <div>
+      <p><strong>Shared, throwaway, no signup.</strong> You get a random address on <code>tryperch.mxraven.com</code> that can receive mail from anywhere for 60 minutes. You can send only to other addresses in the demo domain.</p>
+      <p class="small warn">Don't send anything private. The demo is reset regularly and may be restarted without notice.</p>
+    </div>
+    <div class="actions" id="start-actions">
+      <button id="start">Start a demo inbox</button>
+    </div>
+    <div class="actions hidden" id="session-actions">
+      <button class="secondary" id="reset">New inbox</button>
+      <button class="danger" id="end">End demo</button>
+    </div>
+  </section>
+
+  <div id="notice" class="card"></div>
+
+  <section id="session" class="grid hidden">
+    <div class="stack">
+      <div class="card stack">
+        <div>
+          <div class="label">Demo address</div>
+          <div class="value"><span id="address">—</span><button class="copy" data-copy="address">copy</button></div>
+        </div>
+        <div>
+          <div class="label">Password</div>
+          <div class="value"><span id="password">—</span><button class="copy" data-copy="password">copy</button></div>
+        </div>
+        <div class="kv small">
+          <div>IMAP</div><div><code id="imap">—</code></div>
+          <div>SMTP</div><div><code id="smtp">—</code></div>
+          <div>Expires</div><div id="expires">—</div>
+        </div>
+        <p class="small muted">Both IMAP and SMTP use implicit TLS. Use these credentials in your own mail client or copy the CLI commands below.</p>
+      </div>
+      <div class="card">
+        <div class="label">Try it from your machine</div>
+        <pre class="snippet" id="snippet">—</pre>
+      </div>
+      <div class="card small muted">
+        <strong>What works:</strong> receive mail from anywhere at your demo address, search and fetch it with the perch CLI or IMAP, and send to other <code>@tryperch.mxraven.com</code> addresses. Outbound mail to the public internet is rejected by an mxRaven submission rule. Try sending to yourself first.
+      </div>
+    </div>
+    <div class="stack">
+      <div class="terminal-wrap">
+        <div class="terminal-head">
+          <span>web terminal · perch is preconfigured</span>
+          <span id="status" class="badge">connecting</span>
+        </div>
+        <div id="terminal"></div>
+      </div>
+      <div class="small muted">The terminal runs inside a disposable container. You can create files under <code>/tmp</code> and use them as attachments, for example: <code>echo hello &gt; /tmp/note.txt</code>, then <code>perch mail send --to "$PERCH_IMAP_USER" --subject hi --body hi --attach /tmp/note.txt</code>.</div>
+    </div>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let current = null;
+let term = null;
+let fit = null;
+let ws = null;
+let countdown = null;
+let socketGeneration = 0;
+
+function showNotice(message) {
+  const n = $('notice');
+  n.textContent = message;
+  n.style.display = message ? 'block' : 'none';
+}
+
+function hideSession() {
+  $('session').classList.add('hidden');
+  $('start-actions').classList.remove('hidden');
+  $('session-actions').classList.add('hidden');
+}
+
+function showSession() {
+  $('session').classList.remove('hidden');
+  $('start-actions').classList.add('hidden');
+  $('session-actions').classList.remove('hidden');
+}
+
+function updateCountdown() {
+  if (!current) return;
+  const left = Math.max(0, Math.floor((new Date(current.expires_at) - Date.now()) / 1000));
+  const m = Math.floor(left / 60), s = String(left % 60).padStart(2, '0');
+  $('expires').textContent = left > 0 ? `${m}m ${s}s` : 'expired';
+  if (left <= 0) {
+    endLocal();
+    showNotice('This demo expired. Start a new inbox to keep trying perch.');
+  }
+}
+
+function fillSession(data) {
+  current = data;
+  $('address').textContent = data.address;
+  $('password').textContent = data.password;
+  $('imap').textContent = `${data.imap_host}:${data.imap_port} (implicit TLS)`;
+  $('smtp').textContent = `${data.smtp_host}:${data.smtp_port} (implicit TLS)`;
+  $('snippet').textContent = `export PERCH_IMAP_USER='${data.address}'\nexport PERCH_IMAP_PASSWORD='${data.password}'\n\nperch mail list --server imaps://${data.imap_host}:${data.imap_port}\n\nperch mail send \\\n  --to "$PERCH_IMAP_USER" \\\n  --subject 'hello from perch' \\\n  --body 'This only goes to the demo domain.' \\\n  --smtp-server smtps://${data.smtp_host}:${data.smtp_port}`;
+  showSession();
+  updateCountdown();
+  clearInterval(countdown);
+  countdown = setInterval(updateCountdown, 1000);
+  connectTerminal();
+}
+
+async function start() {
+  $('start').disabled = true;
+  showNotice('');
+  try {
+    const res = await fetch('/api/session', { method: 'POST', credentials: 'same-origin' });
+    if (!res.ok) {
+      const text = await res.text();
+      showNotice(text.trim() || 'Could not start a demo. Try again shortly.');
+      return;
+    }
+    fillSession(await res.json());
+  } catch (err) {
+    showNotice('Could not reach the demo service.');
+  } finally {
+    $('start').disabled = false;
+  }
+}
+
+async function end(keepNotice) {
+  try { await fetch('/api/session', { method: 'DELETE', credentials: 'same-origin' }); } catch (_) {}
+  endLocal();
+  if (!keepNotice) showNotice('Demo ended. Start a new inbox whenever you want.');
+}
+
+function endLocal() {
+  if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+  if (term) { try { term.dispose(); } catch (_) {} term = null; }
+  current = null;
+  clearInterval(countdown);
+  hideSession();
+}
+
+async function reset() {
+  await end(true);
+  await start();
+}
+
+function connectTerminal() {
+  if (!current) return;
+  if (term) { try { term.dispose(); } catch (_) {} }
+  $('terminal').innerHTML = '';
+  term = new Terminal({
+    cursorBlink: true,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    fontSize: 13,
+    theme: { background: '#010409', foreground: '#e6edf3', cursor: '#58a6ff', selectionBackground: '#264f78' },
+    convertEol: false,
+    scrollback: 2000,
+  });
+  fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open($('terminal'));
+  fit.fit();
+  term.focus();
+
+  const gen = ++socketGeneration;
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.binaryType = 'arraybuffer';
+  $('status').textContent = 'connecting';
+  ws.onopen = () => {
+    if (gen !== socketGeneration) return;
+    $('status').textContent = 'connected';
+    sendResize();
+  };
+  ws.onmessage = (ev) => {
+    if (gen !== socketGeneration || !term) return;
+    if (typeof ev.data === 'string') term.write(ev.data);
+    else term.write(new Uint8Array(ev.data));
+  };
+  ws.onclose = () => {
+    if (gen !== socketGeneration) return;
+    $('status').textContent = 'disconnected';
+  };
+  ws.onerror = () => {
+    if (gen !== socketGeneration) return;
+    $('status').textContent = 'error';
+  };
+  term.onData((data) => {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'input', data }));
+  });
+  term.onResize(() => sendResize());
+  window.addEventListener('resize', () => { if (fit) fit.fit(); });
+}
+
+function sendResize() {
+  if (!term || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+}
+
+async function load() {
+  try {
+    const res = await fetch('/api/session', { credentials: 'same-origin' });
+    if (res.ok) fillSession(await res.json());
+    else hideSession();
+  } catch (_) {
+    hideSession();
+  }
+}
+
+document.querySelectorAll('[data-copy]').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const key = btn.dataset.copy;
+    if (!current) return;
+    try {
+      await navigator.clipboard.writeText(current[key]);
+      const old = btn.textContent;
+      btn.textContent = 'copied';
+      setTimeout(() => { btn.textContent = old; }, 1200);
+    } catch (_) {}
+  });
+});
+$('start').addEventListener('click', start);
+$('end').addEventListener('click', () => end(false));
+$('reset').addEventListener('click', reset);
+load();
+</script>
+</body>
+</html>
