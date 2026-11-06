@@ -32,26 +32,19 @@ memory, PID, and tmpfs limits.
 
 ## Status
 
-Provisioned and running:
+Live and verified:
 
 - `tryperch.mxraven.com` domain, inbound route, MTA listener, submission listener, and API keys
 - submission listener default terminal action `REJECT`
 - one allow rule: `len(envelope.rcpt_to) <= 5 && all(envelope.rcpt_to, # endsWith "@tryperch.mxraven.com")`
 - Let's Encrypt certificate for `tryperch.mxraven.com` and `mail.tryperch.mxraven.com`
 - session API, web UI, terminal containers, IMAPS/SMTPS frontend
+- public ports 443, 993, and 465 open
+- self-send accepted, delivered through mxRaven, and stored in the demo inbox
+- external recipient rejected with `550 5.7.1 The perch live demo only accepts @tryperch.mxraven.com recipients`
 
-The web app and IMAP login work. Outbound submission is currently rejected with
-`MAIL FROM must use a verified domain granted to this submission listener`
-because the mxRaven DNS records below are not published yet.
-
-Remaining for launch:
-
-1. Add the mxRaven DNS records: inbound TXT + MX, DKIM CNAMEs, bounces CNAME,
-   and `_dmarc` TXT.
-2. Open ports 443, 993, and 465 to the internet (they are currently restricted
-   to the operator IP).
-3. Send a real external message to a demo address and verify it arrives.
-4. Verify an external recipient is rejected by the submission rule.
+The last confidence check is an inbound message from a real external mailbox to
+a demo address.
 
 ## DNS
 
