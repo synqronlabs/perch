@@ -269,6 +269,61 @@ func (s *Store) SetAccountDisabled(ctx context.Context, accountID int64, disable
 	return nil
 }
 
+// DeleteAccount deletes an account and all of its addresses, mailboxes, and
+// messages. Local blobs are released immediately; S3 blobs remain as
+// tombstones so reconciliation does not re-ingest deleted messages. Outbound
+// history is kept with its account reference cleared.
+func (s *Store) DeleteAccount(ctx context.Context, accountID int64) error {
+	tx, err := s.writer.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete account: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `SELECT blob_id FROM messages WHERE account_id = ?`, accountID)
+	if err != nil {
+		return fmt.Errorf("list account message blobs: %w", err)
+	}
+	var blobs []int64
+	for rows.Next() {
+		var blobID int64
+		if err := rows.Scan(&blobID); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan account message blob: %w", err)
+		}
+		blobs = append(blobs, blobID)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close account message blobs: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("list account message blobs: %w", err)
+	}
+
+	// Delete messages before their blobs so the blob foreign key remains valid
+	// and the search-index delete triggers run.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE account_id = ?`, accountID); err != nil {
+		return fmt.Errorf("delete account messages: %w", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM accounts WHERE id = ?`, accountID)
+	if err != nil {
+		return fmt.Errorf("delete account: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	for _, blobID := range blobs {
+		if err := releaseBlob(ctx, tx, blobID); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete account: %w", err)
+	}
+	return nil
+}
+
 // AddAlias adds an address alias to accountID.
 func (s *Store) AddAlias(ctx context.Context, accountID int64, address string) error {
 	address, err := NormalizeAddress(address)

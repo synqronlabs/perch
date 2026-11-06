@@ -87,18 +87,21 @@ var commandDocs = map[string]commandDoc{
 		},
 	},
 	"perch account": {
-		Summary: "add, list, password, disable, or enable accounts",
+		Summary: "add, list, password, disable, enable, or delete accounts",
 		Paragraphs: []string{
 			"Manage local mailbox accounts. Creating an account also creates the default mailbox set: INBOX, Sent, Drafts, Trash, Junk, and Archive.",
+			"Deleting an account removes its addresses, mailboxes, and messages. Outbound history is retained with the account reference cleared.",
 		},
 		Examples: []string{
 			"perch account add --email you@example.com",
 			"perch account list",
 			"perch account passwd --email you@example.com",
+			"perch account delete --email you@example.com",
 		},
 		Notes: []string{
 			"Passwords are hashed with Argon2id.",
 			"Account changes are written to SQLite and apply without restarting serve.",
+			"Account deletion is immediate and cannot be undone. Local message blobs are released; S3 tombstones are left for gc.",
 		},
 	},
 	"perch account add": {
@@ -150,6 +153,21 @@ var commandDocs = map[string]commandDoc{
 		},
 		Examples: []string{
 			"perch account enable --email you@example.com",
+		},
+	},
+	"perch account delete": {
+		Summary: "delete an account and all of its messages",
+		Paragraphs: []string{
+			"Delete an account, its primary address and aliases, its mailboxes, and every message they contain in one transaction. Outbound submission history is retained with its account reference cleared.",
+			"Local message blobs are released immediately. S3-backed message rows are kept as tombstones so reconciliation does not re-ingest deleted mail; remove the remote objects separately with perch gc --s3-delete.",
+		},
+		Examples: []string{
+			"perch account delete --email you@example.com",
+			"perch account delete --email you@example.com --yes",
+		},
+		Notes: []string{
+			"Prompts for confirmation unless --yes is set. Non-interactive callers must pass --yes.",
+			"Account deletion is immediate and cannot be undone.",
 		},
 	},
 	"perch alias": {
