@@ -14,7 +14,7 @@ Command reference generated from the `perch` command tree. Every command also ac
 | [perch init](perch-init.md) | create a local configuration and optional first account |
 | [perch setup](perch-setup.md) | create the mxRaven domain, listeners, keys, and routes |
 | [perch serve](perch-serve.md) | run IMAP, submission, and the notification consumer |
-| [perch account](perch-account.md) | add, list, password, disable, or enable accounts |
+| [perch account](perch-account.md) | add, list, password, disable, enable, or delete accounts |
 | [perch alias](perch-alias.md) | manage address aliases and catch-all domains |
 | [perch mailbox](perch-mailbox.md) | list mailboxes for an account |
 | [perch mail](perch-mail.md) | list, search, fetch, and send mail |

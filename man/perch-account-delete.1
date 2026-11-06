@@ -1,0 +1,37 @@
+.TH "PERCH-ACCOUNT-DELETE" "1" "" "perch" "perch manual"
+.SH NAME
+perch\-account\-delete \- delete an account and all of its messages
+.SH SYNOPSIS
+.B perch account delete [OPTIONS]
+.SH DESCRIPTION
+.PP
+Delete an account, its primary address and aliases, its mailboxes, and every message they contain in one transaction. Outbound submission history is retained with its account reference cleared.
+.PP
+Local message blobs are released immediately. S3\-backed message rows are kept as tombstones so reconciliation does not re\-ingest deleted mail; remove the remote objects separately with perch gc \-\-s3\-delete.
+.SH NOTES
+.IP \(bu 2
+Prompts for confirmation unless \-\-yes is set. Non\-interactive callers must pass \-\-yes.
+.IP \(bu 2
+Account deletion is immediate and cannot be undone.
+.SH OPTIONS
+.TP
+.B \-\-config <value>
+configuration file (default: ~/.config/perch/perch.yaml)
+.TP
+.B \-\-email <value>
+account email
+.TP
+.B \-\-yes, \-y
+skip the confirmation prompt
+.TP
+.B \-\-help, \-h
+show help
+.SH EXAMPLES
+.nf
+perch account delete \-\-email you@example.com
+
+perch account delete \-\-email you@example.com \-\-yes
+.fi
+.SH SEE ALSO
+.PP
+\fBperch\fR(1), \fBperch\-account\fR(1)

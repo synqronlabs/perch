@@ -75,6 +75,99 @@ func TestAccountRecipientAndMailboxes(t *testing.T) {
 	}
 }
 
+func TestDeleteAccount(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	account, err := st.CreateAccount(ctx, "delete@example.com", "Delete", "hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddAlias(ctx, account.ID, "alias@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	inbox, err := st.MailboxByName(ctx, account.ID, "INBOX")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte("From: sender@example.net\r\nSubject: Delete me\r\n\r\ndeleted body\r\n")
+	msg, _, err := st.InsertMessage(ctx, MessageInput{
+		AccountID: account.ID, MailboxID: inbox.ID, Raw: raw,
+		Size: int64(len(raw)), InternalDate: time.Now(), Subject: "Delete me",
+		Search: SearchContent{Subject: "Delete me", Body: "deleted body"}, DedupeRaw: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertOutboundAccepted(ctx, Outbound{
+		AccountID: account.ID, MessageRef: "delete-ref", FromAddress: "delete@example.com",
+		Recipients: []string{"recipient@example.net"}, Subject: "Outbound", Status: "accepted",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	other, err := st.CreateAccount(ctx, "keep@example.com", "Keep", "hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherInbox, err := st.MailboxByName(ctx, other.ID, "INBOX")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherRaw := []byte("From: sender@example.net\r\nSubject: Keep me\r\n\r\nkept body\r\n")
+	otherMsg, _, err := st.InsertMessage(ctx, MessageInput{
+		AccountID: other.ID, MailboxID: otherInbox.ID, Raw: otherRaw,
+		Size: int64(len(otherRaw)), InternalDate: time.Now(), Subject: "Keep me",
+		Search: SearchContent{Subject: "Keep me", Body: "kept body"}, DedupeRaw: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.DeleteAccount(ctx, account.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AccountByID(ctx, account.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted account lookup = %v", err)
+	}
+	for _, address := range []string{"delete@example.com", "alias@example.com"} {
+		if _, _, err := st.ResolveRecipient(ctx, address); !errors.Is(err, ErrNoRecipient) {
+			t.Fatalf("ResolveRecipient(%q) after delete = %v", address, err)
+		}
+	}
+	if mailboxes, err := st.ListMailboxes(ctx, account.ID); err != nil {
+		t.Fatal(err)
+	} else if len(mailboxes) != 0 {
+		t.Fatalf("mailboxes after delete = %d", len(mailboxes))
+	}
+	if _, _, err := st.RawBlob(ctx, msg.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted message blob = %v", err)
+	}
+	if count, bytes, err := st.GCLocalOrphans(ctx, true); err != nil {
+		t.Fatal(err)
+	} else if count != 0 || bytes != 0 {
+		t.Fatalf("orphan local blobs after delete = %d (%d bytes)", count, bytes)
+	}
+	outbound, err := st.ListOutbound(ctx, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outbound) != 1 || outbound[0].AccountID != 0 || outbound[0].MessageRef != "delete-ref" {
+		t.Fatalf("outbound after delete = %+v", outbound)
+	}
+
+	if _, err := st.AccountByID(ctx, other.ID); err != nil {
+		t.Fatalf("other account lookup = %v", err)
+	}
+	if blob, _, err := st.RawBlob(ctx, otherMsg.ID); err != nil {
+		t.Fatalf("other message blob = %v", err)
+	} else if string(blob) != string(otherRaw) {
+		t.Fatal("other message blob changed")
+	}
+	if err := st.DeleteAccount(ctx, account.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second delete = %v", err)
+	}
+}
+
 func TestMessageLifecycleAndSearch(t *testing.T) {
 	st := testStore(t)
 	ctx := context.Background()

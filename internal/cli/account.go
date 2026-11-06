@@ -1,22 +1,26 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/synqronlabs/perch/internal/config"
 	"github.com/synqronlabs/perch/internal/password"
 	"github.com/synqronlabs/perch/internal/store"
 	cli "github.com/urfave/cli/v3"
+	"golang.org/x/term"
 )
 
 func accountCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "account",
-		Usage:  "add, list, password, disable, or enable accounts",
-		Action: missingOrUnknown("usage: perch account add|list|passwd|disable|enable", "account"),
+		Usage:  "add, list, password, disable, enable, or delete accounts",
+		Action: missingOrUnknown("usage: perch account add|list|passwd|disable|enable|delete", "account"),
 		Commands: []*cli.Command{
 			{
 				Name:  "add",
@@ -47,6 +51,16 @@ func accountCommand() *cli.Command {
 			},
 			accountToggleCommand("disable", true),
 			accountToggleCommand("enable", false),
+			{
+				Name:  "delete",
+				Usage: "delete an account and all of its messages",
+				Flags: []cli.Flag{
+					configFlag(defaultConfigPath()),
+					&cli.StringFlag{Name: "email", Usage: "account email"},
+					&cli.BoolFlag{Name: "yes", Aliases: []string{"y"}, Usage: "skip the confirmation prompt"},
+				},
+				Action: runAccountDelete,
+			},
 		},
 	}
 }
@@ -92,6 +106,40 @@ func runAccountList(ctx context.Context, cmd *cli.Command) error {
 			})
 		}
 		return printTable([]string{"ID", "ADDRESS", "NAME", "DISABLED", "CREATED"}, rows)
+	})
+}
+
+func runAccountDelete(ctx context.Context, cmd *cli.Command) error {
+	email := strings.TrimSpace(cmd.String("email"))
+	if email == "" {
+		return errors.New("--email is required")
+	}
+	return withConfigStore(cmd.String("config"), func(_ config.Config, st *store.Store) error {
+		account, err := st.AccountByAddress(ctx, email)
+		if err != nil {
+			return err
+		}
+		if !cmd.Bool("yes") {
+			if !term.IsTerminal(int(os.Stdin.Fd())) {
+				return errors.New("use --yes to delete without confirmation")
+			}
+			fmt.Fprintf(os.Stderr, "Delete %s and all of its messages? [y/N] ", account.PrimaryAddress)
+			answer, err := bufio.NewReader(os.Stdin).ReadString('\n')
+			if err != nil {
+				return err
+			}
+			switch strings.ToLower(strings.TrimSpace(answer)) {
+			case "y", "yes":
+			default:
+				fmt.Fprintln(os.Stderr, "aborted")
+				return nil
+			}
+		}
+		if err := st.DeleteAccount(ctx, account.ID); err != nil {
+			return err
+		}
+		fmt.Printf("deleted %s\n", account.PrimaryAddress)
+		return nil
 	})
 }
 

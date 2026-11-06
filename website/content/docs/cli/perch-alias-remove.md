@@ -1,6 +1,6 @@
 ---
 title: "perch alias remove"
-weight: 120
+weight: 130
 bookToc: true
 ---
 

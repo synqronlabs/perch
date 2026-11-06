@@ -16,10 +16,13 @@ perch account [OPTIONS] COMMAND
 
 Manage local mailbox accounts. Creating an account also creates the default mailbox set: INBOX, Sent, Drafts, Trash, Junk, and Archive.
 
+Deleting an account removes its addresses, mailboxes, and messages. Outbound history is retained with the account reference cleared.
+
 ## Notes
 
 - Passwords are hashed with Argon2id.
 - Account changes are written to SQLite and apply without restarting serve.
+- Account deletion is immediate and cannot be undone. Local message blobs are released; S3 tombstones are left for gc.
 
 ## Options
 
@@ -36,6 +39,7 @@ Manage local mailbox accounts. Creating an account also creates the default mail
 | [perch account passwd](perch-account-passwd.md) | change an account password |
 | [perch account disable](perch-account-disable.md) | disable an account |
 | [perch account enable](perch-account-enable.md) | enable an account |
+| [perch account delete](perch-account-delete.md) | delete an account and all of its messages |
 
 ## Examples
 
@@ -45,12 +49,15 @@ perch account add --email you@example.com
 perch account list
 
 perch account passwd --email you@example.com
+
+perch account delete --email you@example.com
 ```
 
 ## See also
 
 - [perch](perch.md)
 - [perch account add](perch-account-add.md)
+- [perch account delete](perch-account-delete.md)
 - [perch account disable](perch-account-disable.md)
 - [perch account enable](perch-account-enable.md)
 - [perch account list](perch-account-list.md)
