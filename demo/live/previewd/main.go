@@ -94,7 +94,7 @@ func main() {
 	flag.StringVar(&cfg.MailHost, "mail-host", "mail.tryperch.mxraven.com", "public IMAP/SMTP host")
 	flag.IntVar(&cfg.IMAPPort, "imap-port", 993, "public IMAPS port")
 	flag.IntVar(&cfg.SMTPPort, "smtp-port", 465, "public SMTPS port")
-	flag.DurationVar(&cfg.TTL, "ttl", 60*time.Minute, "demo session lifetime")
+	flag.DurationVar(&cfg.TTL, "ttl", 15*time.Minute, "demo session lifetime")
 	flag.IntVar(&cfg.MaxSessions, "max-sessions", 50, "maximum concurrent demo sessions")
 	flag.StringVar(&cfg.Image, "terminal-image", "perch-demo-terminal:latest", "terminal container image")
 	flag.StringVar(&cfg.Network, "docker-network", "perch-demo-internal", "internal Docker network")

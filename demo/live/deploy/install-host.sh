@@ -148,7 +148,7 @@ stream {
 NGINX
 
 cat > "$CONFIG_DIR/previewd.env" <<ENV
-PREVIEWD_FLAGS=-listen 127.0.0.1:8080 -perch-config $CONFIG_DIR/perch.yaml -perch-bin /usr/local/bin/perch -domain $ACCOUNT_DOMAIN -mail-host $MAIL_HOST -imap-port 993 -smtp-port 465 -ttl 60m -max-sessions 50 -terminal-image perch-demo-terminal:latest -docker-network perch-demo-internal -proxy-ip 172.31.240.2 -state-dir $DATA_DIR -docker-bin /usr/bin/docker -secure-cookie=true
+PREVIEWD_FLAGS=-listen 127.0.0.1:8080 -perch-config $CONFIG_DIR/perch.yaml -perch-bin /usr/local/bin/perch -domain $ACCOUNT_DOMAIN -mail-host $MAIL_HOST -imap-port 993 -smtp-port 465 -ttl 15m -max-sessions 50 -terminal-image perch-demo-terminal:latest -docker-network perch-demo-internal -proxy-ip 172.31.240.2 -state-dir $DATA_DIR -docker-bin /usr/bin/docker -secure-cookie=true
 ENV
 
 cat > /etc/systemd/system/perch-demo.service <<UNIT
