@@ -168,21 +168,41 @@ func (s *Store) AccountByID(ctx context.Context, id int64) (Account, error) {
 		FROM accounts WHERE id = ?`, id))
 }
 
-// AccountByAddress returns the account owning address, including aliases and
-// catch-all domains.
+// AccountByAddress returns the active account owning address, including
+// aliases and catch-all domains. Disabled accounts are rejected; use
+// AccountByAddressIncludingDisabled for administrative commands.
 func (s *Store) AccountByAddress(ctx context.Context, address string) (Account, error) {
 	a, _, err := s.ResolveRecipient(ctx, address)
 	return a, err
 }
 
-// ResolveRecipient maps an envelope recipient to an account. It tries an exact
-// address, then the plus-tag-stripped form, then a domain catch-all.
+// AccountByAddressIncludingDisabled returns the account owning address,
+// including aliases and catch-all domains, even when the account is disabled.
+// Administrative commands (enable, passwd, delete, mailbox/alias inspection)
+// use this so an operator can recover a disabled account. Authentication and
+// inbound delivery must keep using AccountByAddress/ResolveRecipient so
+// disabled accounts remain unable to log in or receive mail.
+func (s *Store) AccountByAddressIncludingDisabled(ctx context.Context, address string) (Account, error) {
+	normalized, err := NormalizeAddress(address)
+	if err != nil {
+		return Account{}, err
+	}
+	a, _, err := s.resolveRecipient(ctx, normalized, true)
+	return a, err
+}
+
+// ResolveRecipient maps an envelope recipient to an active account. It tries
+// an exact address, then the plus-tag-stripped form, then a domain catch-all.
 func (s *Store) ResolveRecipient(ctx context.Context, address string) (Account, string, error) {
-	address, err := NormalizeAddress(address)
+	normalized, err := NormalizeAddress(address)
 	if err != nil {
 		return Account{}, "", err
 	}
-	a, matched, err := s.resolveExact(ctx, address)
+	return s.resolveRecipient(ctx, normalized, false)
+}
+
+func (s *Store) resolveRecipient(ctx context.Context, address string, allowDisabled bool) (Account, string, error) {
+	a, matched, err := s.resolveExact(ctx, address, allowDisabled)
 	if err == nil {
 		return a, matched, nil
 	}
@@ -190,7 +210,7 @@ func (s *Store) ResolveRecipient(ctx context.Context, address string) (Account, 
 		return Account{}, "", err
 	}
 	if base, ok := StripPlus(address); ok && base != address {
-		a, matched, err = s.resolveExact(ctx, base)
+		a, matched, err = s.resolveExact(ctx, base, allowDisabled)
 		if err == nil {
 			return a, matched, nil
 		}
@@ -199,7 +219,7 @@ func (s *Store) ResolveRecipient(ctx context.Context, address string) (Account, 
 		}
 	}
 	if domain := domainOf(address); domain != "" {
-		a, matched, err = s.resolveExact(ctx, "*@"+domain)
+		a, matched, err = s.resolveExact(ctx, "*@"+domain, allowDisabled)
 		if err == nil {
 			return a, matched, nil
 		}
@@ -210,7 +230,7 @@ func (s *Store) ResolveRecipient(ctx context.Context, address string) (Account, 
 	return Account{}, "", ErrNoRecipient
 }
 
-func (s *Store) resolveExact(ctx context.Context, address string) (Account, string, error) {
+func (s *Store) resolveExact(ctx context.Context, address string, allowDisabled bool) (Account, string, error) {
 	var accountID int64
 	err := s.reader.QueryRowContext(ctx, `SELECT account_id FROM addresses WHERE address = ?`, address).Scan(&accountID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -223,7 +243,7 @@ func (s *Store) resolveExact(ctx context.Context, address string) (Account, stri
 	if err != nil {
 		return Account{}, "", err
 	}
-	if a.Disabled {
+	if a.Disabled && !allowDisabled {
 		return Account{}, "", ErrAccountDisabled
 	}
 	return a, address, nil

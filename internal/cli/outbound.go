@@ -35,7 +35,7 @@ func runOutboundList(ctx context.Context, cmd *cli.Command) error {
 	return withConfigStore(cmd.String("config"), func(_ config.Config, st *store.Store) error {
 		var accountID int64
 		if accountEmail := cmd.String("account"); accountEmail != "" {
-			account, err := st.AccountByAddress(ctx, accountEmail)
+			account, err := st.AccountByAddressIncludingDisabled(ctx, accountEmail)
 			if err != nil {
 				return err
 			}

@@ -115,7 +115,7 @@ func runAccountDelete(ctx context.Context, cmd *cli.Command) error {
 		return errors.New("--email is required")
 	}
 	return withConfigStore(cmd.String("config"), func(_ config.Config, st *store.Store) error {
-		account, err := st.AccountByAddress(ctx, email)
+		account, err := st.AccountByAddressIncludingDisabled(ctx, email)
 		if err != nil {
 			return err
 		}
@@ -149,7 +149,7 @@ func runAccountPasswd(ctx context.Context, cmd *cli.Command) error {
 		return errors.New("--email is required")
 	}
 	return withConfigStore(cmd.String("config"), func(_ config.Config, st *store.Store) error {
-		account, err := st.AccountByAddress(ctx, email)
+		account, err := st.AccountByAddressIncludingDisabled(ctx, email)
 		if err != nil {
 			return err
 		}
@@ -187,7 +187,7 @@ func accountToggleCommand(name string, disabled bool) *cli.Command {
 				return errors.New("--email is required")
 			}
 			return withConfigStore(cmd.String("config"), func(_ config.Config, st *store.Store) error {
-				account, err := st.AccountByAddress(ctx, email)
+				account, err := st.AccountByAddressIncludingDisabled(ctx, email)
 				if err != nil {
 					return err
 				}

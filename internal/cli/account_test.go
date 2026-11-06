@@ -68,6 +68,51 @@ func TestAccountDelete(t *testing.T) {
 	}
 }
 
+func TestAccountEnableDisabledAccount(t *testing.T) {
+	cfg, path := testAccountConfig(t)
+	createTestAccount(t, cfg, "enable@example.com")
+
+	st, err := store.Open(cfg.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, err := st.AccountByAddress(context.Background(), "enable@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetAccountDisabled(context.Background(), account.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	_ = st.Close()
+
+	var code int
+	out, errOut := captureOutput(t, func() {
+		code = Run([]string{
+			"account", "enable", "--config", path,
+			"--email", "enable@example.com",
+		})
+	})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", code, errOut)
+	}
+	if !strings.Contains(out, "enabled enable@example.com") {
+		t.Fatalf("output = %q", out)
+	}
+
+	st, err = store.Open(cfg.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	got, err := st.AccountByAddress(context.Background(), "enable@example.com")
+	if err != nil {
+		t.Fatalf("account after enable = %v", err)
+	}
+	if got.Disabled {
+		t.Fatal("account is still disabled")
+	}
+}
+
 func TestAccountDeleteRequiresConfirmationWithoutTerminal(t *testing.T) {
 	cfg, path := testAccountConfig(t)
 	createTestAccount(t, cfg, "delete@example.com")

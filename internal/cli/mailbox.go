@@ -35,7 +35,7 @@ func runMailboxList(ctx context.Context, cmd *cli.Command) error {
 		return errors.New("--account is required")
 	}
 	return withConfigStore(cmd.String("config"), func(_ config.Config, st *store.Store) error {
-		account, err := st.AccountByAddress(ctx, accountEmail)
+		account, err := st.AccountByAddressIncludingDisabled(ctx, accountEmail)
 		if err != nil {
 			return err
 		}

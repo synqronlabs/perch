@@ -75,6 +75,40 @@ func TestAccountRecipientAndMailboxes(t *testing.T) {
 	}
 }
 
+func TestAccountByAddressIncludingDisabled(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	account, err := st.CreateAccount(ctx, "disabled@example.com", "Disabled", "hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddAlias(ctx, account.ID, "alias@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetAccountDisabled(ctx, account.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Authentication and delivery must reject a disabled account.
+	if _, _, err := st.ResolveRecipient(ctx, "disabled@example.com"); !errors.Is(err, ErrAccountDisabled) {
+		t.Fatalf("ResolveRecipient disabled = %v", err)
+	}
+	if _, err := st.AccountByAddress(ctx, "disabled@example.com"); !errors.Is(err, ErrAccountDisabled) {
+		t.Fatalf("AccountByAddress disabled = %v", err)
+	}
+
+	// Administrative lookup must still find it, including through an alias.
+	for _, address := range []string{"disabled@example.com", "alias@example.com"} {
+		got, err := st.AccountByAddressIncludingDisabled(ctx, address)
+		if err != nil {
+			t.Fatalf("AccountByAddressIncludingDisabled(%q): %v", address, err)
+		}
+		if got.ID != account.ID || !got.Disabled {
+			t.Fatalf("AccountByAddressIncludingDisabled(%q) = %+v", address, got)
+		}
+	}
+}
+
 func TestDeleteAccount(t *testing.T) {
 	st := testStore(t)
 	ctx := context.Background()
