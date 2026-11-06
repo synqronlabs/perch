@@ -24,6 +24,7 @@ disablePathToLower = true
   BookPortableLinks = 'error'
   BookDateFormat = '2006-01-02'
   BookTheme = 'auto'
+  UmamiWebsiteID = 'f1009ca3-35c2-46c7-9895-1a6c72217647'
 
 [menu]
 [[menu.home]]
