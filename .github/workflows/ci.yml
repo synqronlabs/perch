@@ -120,6 +120,9 @@ jobs:
       - name: Check generated manpages and CLI reference
         run: make docs-check
 
+      - name: Check bundled agent skill
+        run: make skill-check
+
       - name: Build website
         run: make website
 

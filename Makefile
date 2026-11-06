@@ -1,4 +1,4 @@
-.PHONY: build test race vet lint tidy clean snapshot release-check docs website docs-check
+.PHONY: build test race vet lint tidy clean snapshot release-check docs website docs-check skill-check
 
 
 # Release builds override this via -ldflags in GoReleaser.
@@ -38,6 +38,17 @@ docs-check: docs
 		echo "generated docs are stale; run make docs and commit the result" >&2; \
 		exit 1; \
 	}
+
+# Validate the shipped Agent Skill without requiring Node or network access.
+skill-check:
+	@test "$$(head -n 1 skills/perch/SKILL.md)" = "---"
+	@grep -q '^name: perch$$' skills/perch/SKILL.md
+	@grep -q '^description: .\+' skills/perch/SKILL.md
+	@test -f skills/perch/references/commands.md
+	@test -f skills/perch/references/diagnostics.md
+	@test -f skills/perch/references/agent-patterns.md
+	@test -x skills/perch/scripts/perch-diag.sh
+	@sh -n skills/perch/scripts/perch-diag.sh
 
 # Build release archives, checksums, and SBOMs locally without publishing,
 # signing, or generating SBOMs (those require cosign/Syft and GitHub OIDC).
