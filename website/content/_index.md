@@ -16,7 +16,7 @@ description: A single-binary IMAP and SMTP server with a POSIX CLI, by mxRaven.
     </h1>
     <div class="hero-actions">
       <a class="button button--primary" href="{{< relref "/docs/getting-started/installation" >}}">Get started</a>
-      <a class="button button--secondary" href="https://github.com/synqronlabs/perch">View on GitHub</a>
+      <a class="button button--secondary" href="https://tryperch.mxraven.com/">Live demo</a>
     </div>
     <button class="install" type="button" aria-label="Copy install command">
       <span class="prompt" aria-hidden="true">$</span>
