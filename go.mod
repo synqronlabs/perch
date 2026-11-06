@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.4
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
+	github.com/go-faster/jx v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.20.3
 	github.com/synqronlabs/mxraven-go v0.9.0
@@ -42,7 +43,6 @@ require (
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-faster/errors v0.8.0 // indirect
-	github.com/go-faster/jx v1.2.0 // indirect
 	github.com/go-faster/yaml v0.4.6 // indirect
 	github.com/gofrs/uuid/v5 v5.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
