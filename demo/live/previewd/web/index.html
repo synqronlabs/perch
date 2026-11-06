@@ -248,9 +248,12 @@ function connectTerminal() {
   state.term.onResize(() => sendResize());
 }
 
-function sendLine(line, echo) {
+function sendLine(line, echoLine) {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-  if (echo && state.term) state.term.write(line + '\r\n');
+  if (state.term) {
+    if (echoLine) state.term.write(line);
+    state.term.write('\r\n');
+  }
   state.ws.send(JSON.stringify({ type: 'input', data: line + '\r' }));
   state.inputBuffer = '';
 }
@@ -272,7 +275,7 @@ function handleInput(data) {
   if (!state.term) return;
   for (const ch of data) {
     if (ch === '\r' || ch === '\n') {
-      sendLine(state.inputBuffer, true);
+      sendLine(state.inputBuffer, false);
       continue;
     }
     if (ch === '\x7f' || ch === '\b') {
