@@ -142,6 +142,10 @@ func (s *session) Data(headers server.MessageHeaders, body io.Reader) error {
 	}
 	reader := &countingReader{reader: io.MultiReader(bytes.NewReader(headers), bytes.NewReader([]byte("\r\n")), body)}
 	resp, err := s.upstream.StreamData(reader)
+	if resp != nil && !resp.IsSuccess() {
+		s.closeUpstream()
+		return responseError(resp)
+	}
 	if err != nil {
 		s.closeUpstream()
 		return temporaryError("upstream submission failed")
@@ -149,10 +153,6 @@ func (s *session) Data(headers server.MessageHeaders, body io.Reader) error {
 	if resp == nil {
 		s.closeUpstream()
 		return temporaryError("upstream submission returned no response")
-	}
-	if !resp.IsSuccess() {
-		s.closeUpstream()
-		return responseError(resp)
 	}
 	ref := messageRef(resp.Message)
 	if ref != "" {
@@ -227,7 +227,7 @@ func (s *session) ensureUpstream() error {
 	}
 	upstream, err := dialer.DialContext(ctx)
 	if err != nil {
-		return temporaryError("cannot connect to mxRaven submission")
+		return temporaryError(fmt.Sprintf("cannot connect to mxRaven submission: %v", err))
 	}
 	s.upstream = upstream
 	return nil

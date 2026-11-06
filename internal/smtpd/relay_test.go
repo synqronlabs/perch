@@ -91,6 +91,7 @@ func TestRelayToUpstream(t *testing.T) {
 	})
 	go func() { _ = upstream.Serve(upstreamCtx, upstreamLn) }()
 	t.Cleanup(func() { upstreamCancel(); _ = upstream.Close() })
+	waitForListener(t, upstreamLn.Addr().String())
 	_, upstreamPort, _ := net.SplitHostPort(upstreamLn.Addr().String())
 
 	cfg := config.Default()
