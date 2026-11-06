@@ -395,7 +395,7 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = conn.Close() }()
 	conn.SetReadLimit(64 * 1024)
 
-	cmd := exec.Command(s.cfg.DockerBin, "exec", "-i", "-t", "-e", "TERM=xterm-256color", sess.ContainerID, "/bin/sh")
+	cmd := exec.Command(s.cfg.DockerBin, "exec", "-i", "-t", "-e", "TERM=xterm-256color", sess.ContainerID, "/bin/sh", "-c", "stty -echo 2>/dev/null; exec /bin/sh")
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: 100, Rows: 30})
 	if err != nil {

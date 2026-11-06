@@ -150,7 +150,7 @@ body.drawer-open .drawer-tab{display:none}
 <script src="/assets/addon-fit.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-const state = { session: null, term: null, fit: null, ws: null, timer: null, snippet: '', expired: false, generation: 0 };
+const state = { session: null, term: null, fit: null, ws: null, timer: null, snippet: '', expired: false, generation: 0, inputBuffer: '' };
 
 function set(id, value) { $(id).textContent = value; }
 function fail(message) { $('status').textContent = message; }
@@ -244,12 +244,64 @@ function connectTerminal() {
     if (gen !== state.generation) return;
     if (!state.expired) fail('disconnected');
   };
-  state.term.onData((data) => {
-    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-      state.ws.send(JSON.stringify({ type: 'input', data }));
-    }
-  });
+  state.term.onData(handleInput);
   state.term.onResize(() => sendResize());
+}
+
+function sendLine(line, echo) {
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+  if (echo && state.term) state.term.write(line + '\r\n');
+  state.ws.send(JSON.stringify({ type: 'input', data: line + '\r' }));
+  state.inputBuffer = '';
+}
+
+function eraseInput() {
+  if (!state.term) return;
+  for (let i = 0; i < state.inputBuffer.length; i++) state.term.write('\b \b');
+  state.inputBuffer = '';
+}
+
+function submitPaste(command) {
+  if (!state.term) return;
+  eraseInput();
+  sendLine(command, true);
+  state.term.focus();
+}
+
+function handleInput(data) {
+  if (!state.term) return;
+  for (const ch of data) {
+    if (ch === '\r' || ch === '\n') {
+      sendLine(state.inputBuffer, true);
+      continue;
+    }
+    if (ch === '\x7f' || ch === '\b') {
+      if (state.inputBuffer.length > 0) {
+        state.inputBuffer = state.inputBuffer.slice(0, -1);
+        state.term.write('\b \b');
+      }
+      continue;
+    }
+    if (ch === '\x03') {
+      state.inputBuffer = '';
+      state.term.write('^C\r\n');
+      if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({ type: 'input', data: '\x03' }));
+      }
+      continue;
+    }
+    if (ch === '\x04') {
+      if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({ type: 'input', data: '\x04' }));
+      }
+      continue;
+    }
+    if (ch === '\t' || ch === '\x1b') continue;
+    if (ch >= ' ') {
+      state.inputBuffer += ch;
+      state.term.write(ch);
+    }
+  }
 }
 
 function sendResize() {
@@ -301,9 +353,7 @@ document.querySelector('[data-copy-snippet]').addEventListener('click', async (e
 
 document.querySelectorAll('[data-paste]').forEach((btn) => {
   btn.addEventListener('click', () => {
-    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-    state.ws.send(JSON.stringify({ type: 'input', data: btn.dataset.paste }));
-    state.term.focus();
+    submitPaste(btn.dataset.paste);
     const old = btn.textContent;
     btn.textContent = 'pasted';
     setTimeout(() => { btn.textContent = old; }, 900);
