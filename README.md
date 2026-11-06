@@ -4,15 +4,9 @@
 
 # perch by mxRaven
 
-**Open source inbox for you, your agent, or your application — in 1 file.**
-
-perch is a single-binary IMAP + SMTP server with a POSIX CLI. Run it on a
-homelab, give an AI agent an inbox, or wire mail into your app — without a
-public IP, port forwarding, or an MTA to babysit.
-
-[![asciicast](https://asciinema.org/a/crLSuCOxU10ANarU.svg)](https://asciinema.org/a/crLSuCOxU10ANarU)
-
-## Why perch
+perch is a tiny single-binary IMAP + SMTP server with a POSIX CLI. Run it on a
+homelab, give an AI agent an inbox, or wire mail into your app without a
+public IP, port forwarding.
 
 - **1 file, zero sidecars.** A CGO-free Go binary with embedded SQLite and FTS5. No Postfix, Dovecot, Rspamd, or container orchestra.
 - **No public IP required.** Inbound mail arrives over an outbound WebSocket. Works behind NAT, CGNAT, or a homelab router.
@@ -21,8 +15,8 @@ public IP, port forwarding, or an MTA to babysit.
 - **Standard protocols.** IMAP and authenticated SMTP. Use Thunderbird, Apple Mail, mutt, or your own application client.
 - **Private by default.** Self-hosted mail with zero inbound SMTP ports. [mxRaven](https://mxraven.com) does not retain your messages.
 
-[mxRaven](https://mxraven.com) handles the public edge — MX, SPF/DKIM/DMARC, IP reputation, and spam
-filtering — so perch can stay inside your network. Your mail stays on your disk
+[mxRaven](https://mxraven.com) handles the public edge: MX, SPF/DKIM/DMARC, IP reputation, and spam
+filtering so perch can stay inside your network. Your mail stays on your disk
 or bucket.
 
 ## Use it as
@@ -51,6 +45,18 @@ No browser sessions, no scraping, and no vendor-specific mailbox API. The same
 commands work against a local perch server or any remote IMAP/SMTP server. See
 [Agents and applications](https://perch.mxraven.com/docs/mail/agents/)
 for more patterns.
+
+### Install the agent skill
+
+perch ships an Agent Skill that teaches coding agents to run inbox workflows
+and diagnose connection, auth, and delivery failures with the CLI.
+
+```sh
+npx skills add https://github.com/synqronlabs/perch --skill perch
+```
+
+Add `-g` to make it available across projects, or target a harness with
+`-a pi` / `-a hermes-agent`. Browse it first with `--list`.
 
 ## Documentation
 

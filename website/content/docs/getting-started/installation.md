@@ -88,3 +88,20 @@ sudo mandb   # on systems that use mandb
 ```
 
 Then run `man perch`, `man perch-mail`, or `man perch-mail-send`.
+
+## Agent skill
+
+Coding-agent harnesses can install the bundled Agent Skill instead of copying
+CLI recipes into each prompt:
+
+```sh
+npx skills add https://github.com/synqronlabs/perch --skill perch
+```
+
+Use `-g` for a user-wide install and `-a pi` or `-a hermes-agent` to target a
+specific harness. Inspect it without installing with `--list`. The skill source
+lives at
+[`skills/perch/`](https://github.com/synqronlabs/perch/tree/main/skills/perch).
+It covers sending and receiving mail as an agent, NDJSON output, reply
+threading, polling state, attachments, and a read-only diagnostic path for
+connection, authentication, delivery, TLS, S3, and configuration failures.

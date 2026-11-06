@@ -17,7 +17,11 @@ The command reference is generated from the installed command tree:
 - [`perch mail caps`](../cli/perch-mail-caps.md)
 
 For agent and application patterns, see
-[Agents and applications](agents.md).
+[Agents and applications](agents.md). If you are wiring a coding agent into a
+mailbox, the repository also ships an Agent Skill that installs with
+`npx skills add https://github.com/synqronlabs/perch --skill perch`. It covers
+inbox polling, replies with attachments, credential-safe CLI use, and the
+read-only diagnostic path.
 
 ## Connection flags
 
