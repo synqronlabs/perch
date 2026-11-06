@@ -3,12 +3,15 @@
 # Run only after tryperch.mxraven.com and mail.tryperch.mxraven.com resolve to
 # this host and port 80 is reachable from the internet.
 set -euo pipefail
+export HOME=/root
 DEMO_HOST="${DEMO_HOST:-tryperch.mxraven.com}"
 MAIL_HOST="${MAIL_HOST:-mail.tryperch.mxraven.com}"
 EMAIL="${ACME_EMAIL:-admin@mxraven.com}"
 ACME=/root/.acme.sh/acme.sh
 
 if [ ! -x "$ACME" ]; then
+  dnf install -y cronie >/dev/null
+  systemctl enable --now crond >/dev/null 2>&1 || true
   curl -fsSL https://get.acme.sh | sh -s "email=$EMAIL"
 fi
 

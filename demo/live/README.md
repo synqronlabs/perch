@@ -32,18 +32,26 @@ memory, PID, and tmpfs limits.
 
 ## Status
 
-Smoke-tested end to end on the existing `kush` workspace with a temporary
-`@perch.kush.in` account: create account, IMAP list/search, send to self, receive
-through mxRaven, and search the delivered message from the terminal.
+Provisioned and running:
 
-Final `tryperch.mxraven.com` cutover is blocked on:
+- `tryperch.mxraven.com` domain, inbound route, MTA listener, submission listener, and API keys
+- submission listener default terminal action `REJECT`
+- one allow rule: `len(envelope.rcpt_to) <= 5 && all(envelope.rcpt_to, # endsWith "@tryperch.mxraven.com")`
+- Let's Encrypt certificate for `tryperch.mxraven.com` and `mail.tryperch.mxraven.com`
+- session API, web UI, terminal containers, IMAPS/SMTPS frontend
 
-1. Approval of the mxRaven connected-app device code.
-2. DNS records at Cloudflare for `tryperch.mxraven.com` and
-   `mail.tryperch.mxraven.com`.
-3. A trusted TLS certificate (the current certificate is a demo CA).
-4. Replacing the smoke-test perch config with the provisioned
-   `tryperch.mxraven.com` config.
+The web app and IMAP login work. Outbound submission is currently rejected with
+`MAIL FROM must use a verified domain granted to this submission listener`
+because the mxRaven DNS records below are not published yet.
+
+Remaining for launch:
+
+1. Add the mxRaven DNS records: inbound TXT + MX, DKIM CNAMEs, bounces CNAME,
+   and `_dmarc` TXT.
+2. Open ports 443, 993, and 465 to the internet (they are currently restricted
+   to the operator IP).
+3. Send a real external message to a demo address and verify it arrives.
+4. Verify an external recipient is rejected by the submission rule.
 
 ## DNS
 
@@ -55,8 +63,16 @@ tryperch.mxraven.com       A     18.156.206.179
 mail.tryperch.mxraven.com  A     18.156.206.179
 ```
 
-Plus the records mxRaven prints after `perch setup`: inbound route TXT and MX,
-DKIM CNAMEs, bounces CNAME, and `_dmarc.tryperch` TXT.
+Plus the records mxRaven printed after `perch setup`:
+
+```text
+CNAME  bounces.tryperch.mxraven.com           vsdwgdfcjei2llrbxuqvublgbsy.bounces.dns.mxraven.email
+CNAME  mxr1._domainkey.tryperch.mxraven.com   vsdwgdfcjei2llrbxuqvublgbsy.mxr1._domainkey.dkim.dns.mxraven.email
+CNAME  mxr2._domainkey.tryperch.mxraven.com   vsdwgdfcjei2llrbxuqvublgbsy.mxr2._domainkey.dkim.dns.mxraven.email
+TXT    _dmarc.tryperch.mxraven.com            "v=DMARC1; p=quarantine"
+TXT    _mxraven-inbound.tryperch.mxraven.com  "mxraven-inbound=inb-vnjcfq2sqihrvaqexws6gc53hfe"
+MX     tryperch.mxraven.com                   smtp.mxraven.email (priority 10)
+```
 
 ## Operations
 
