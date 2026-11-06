@@ -49,6 +49,10 @@ type config struct {
 	StateDir     string
 	DockerBin    string
 	SecureCookie bool
+
+	TurnstileSiteKey string
+	TurnstileSecret  string
+	turnstileURL     string
 }
 
 type session struct {
@@ -74,15 +78,17 @@ type sessionView struct {
 }
 
 type server struct {
-	cfg       config
-	log       *slog.Logger
-	upgrader  websocket.Upgrader
-	mu        sync.Mutex
-	sessions  map[string]*session
-	byIP      map[string]map[string]struct{}
-	creates   map[string][]time.Time
-	creating  int
-	createSem chan struct{}
+	cfg        config
+	log        *slog.Logger
+	upgrader   websocket.Upgrader
+	mu         sync.Mutex
+	sessions   map[string]*session
+	byIP       map[string]map[string]struct{}
+	creates    map[string][]time.Time
+	verifies   map[string][]time.Time
+	creating   int
+	createSem  chan struct{}
+	httpClient *http.Client
 }
 
 func main() {
@@ -102,9 +108,15 @@ func main() {
 	flag.StringVar(&cfg.StateDir, "state-dir", "/var/lib/perch-demo", "session state directory")
 	flag.StringVar(&cfg.DockerBin, "docker-bin", "docker", "docker binary")
 	flag.BoolVar(&cfg.SecureCookie, "secure-cookie", true, "set the Secure attribute on the session cookie")
+	flag.StringVar(&cfg.TurnstileSiteKey, "turnstile-site-key", os.Getenv("TURNSTILE_SITE_KEY"), "Cloudflare Turnstile site key (empty disables verification)")
+	flag.StringVar(&cfg.TurnstileSecret, "turnstile-secret", os.Getenv("TURNSTILE_SECRET_KEY"), "Cloudflare Turnstile secret key")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if (cfg.TurnstileSiteKey == "") != (cfg.TurnstileSecret == "") {
+		log.Error("turnstile requires both a site key and a secret key")
+		os.Exit(1)
+	}
 	if err := os.MkdirAll(filepath.Join(cfg.StateDir, "sessions"), 0o700); err != nil {
 		log.Error("create state directory", "error", err)
 		os.Exit(1)
@@ -124,10 +136,12 @@ func main() {
 				return err == nil && u.Host == r.Host
 			},
 		},
-		sessions:  make(map[string]*session),
-		byIP:      make(map[string]map[string]struct{}),
-		creates:   make(map[string][]time.Time),
-		createSem: make(chan struct{}, 3),
+		sessions:   make(map[string]*session),
+		byIP:       make(map[string]map[string]struct{}),
+		creates:    make(map[string][]time.Time),
+		verifies:   make(map[string][]time.Time),
+		createSem:  make(chan struct{}, 3),
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -144,6 +158,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(webRoot))))
 	mux.HandleFunc("/", srv.handleIndex)
+	mux.HandleFunc("/api/config", srv.handleConfig)
 	mux.HandleFunc("/api/session", srv.handleSession)
 	mux.HandleFunc("/ws", srv.handleTerminal)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -161,7 +176,8 @@ func main() {
 		defer cancel()
 		_ = httpServer.Shutdown(shutdownCtx)
 	}()
-	log.Info("previewd listening", "addr", cfg.Listen, "domain", cfg.Domain, "ttl", cfg.TTL)
+	log.Info("previewd listening", "addr", cfg.Listen, "domain", cfg.Domain, "ttl", cfg.TTL,
+		"turnstile", srv.turnstileEnabled())
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("http server", "error", err)
 		os.Exit(1)
@@ -184,6 +200,18 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"turnstile_site_key": s.cfg.TurnstileSiteKey,
+		"turnstile_required": s.turnstileEnabled(),
+	})
+}
+
 func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -197,6 +225,26 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		if sess := s.currentSession(r); sess != nil {
 			writeJSON(w, http.StatusOK, s.view(sess))
 			return
+		}
+		if s.turnstileEnabled() {
+			ip := clientIP(r)
+			if !s.allowVerify(ip, time.Now().UTC()) {
+				http.Error(w, "too many verification attempts; try again later", http.StatusTooManyRequests)
+				return
+			}
+			token, err := turnstileTokenFrom(w, r)
+			if err != nil {
+				http.Error(w, "invalid request", http.StatusBadRequest)
+				return
+			}
+			if err := s.verifyTurnstile(r.Context(), token, ip); err != nil {
+				status := http.StatusForbidden
+				if errors.Is(err, errTurnstileUnavailable) {
+					status = http.StatusServiceUnavailable
+				}
+				http.Error(w, err.Error(), status)
+				return
+			}
 		}
 		sess, err := s.createSession(r)
 		if err != nil {
@@ -224,19 +272,116 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 }
 
 var (
-	errTooMany     = errors.New("demo is full; try again shortly")
-	errRateLimited = errors.New("too many demo sessions from this address; try again later")
+	errTooMany              = errors.New("demo is full; try again shortly")
+	errRateLimited          = errors.New("too many demo sessions from this address; try again later")
+	errTurnstileRejected    = errors.New("verification failed; try again")
+	errTurnstileUnavailable = errors.New("verification unavailable; try again shortly")
 )
 
 const maxActivePerIP = 3
 const maxCreatesPerHour = 10
+const maxVerifiesPerHour = 30
+
+const (
+	turnstileAction       = "demo_session"
+	defaultTurnstileURL   = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+	turnstileMaxBodyBytes = 4 << 10
+)
+
+func (s *server) turnstileEnabled() bool {
+	return s.cfg.TurnstileSiteKey != "" && s.cfg.TurnstileSecret != ""
+}
+
+func (s *server) turnstileVerifyURL() string {
+	if s.cfg.turnstileURL != "" {
+		return s.cfg.turnstileURL
+	}
+	return defaultTurnstileURL
+}
+
+func (s *server) allowVerify(ip string, now time.Time) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pruneLimitsLocked(now)
+	if len(s.verifies[ip]) >= maxVerifiesPerHour {
+		return false
+	}
+	s.verifies[ip] = append(s.verifies[ip], now)
+	return true
+}
+
+func turnstileTokenFrom(w http.ResponseWriter, r *http.Request) (string, error) {
+	var body struct {
+		TurnstileToken string `json:"turnstile_token"`
+	}
+	if r.Body == nil {
+		return "", nil
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, turnstileMaxBodyBytes))
+	if err := dec.Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	return strings.TrimSpace(body.TurnstileToken), nil
+}
+
+func (s *server) verifyTurnstile(ctx context.Context, token, remoteIP string) error {
+	if !s.turnstileEnabled() {
+		return nil
+	}
+	if token == "" {
+		return errTurnstileRejected
+	}
+	form := url.Values{}
+	form.Set("secret", s.cfg.TurnstileSecret)
+	form.Set("response", token)
+	if ip := net.ParseIP(remoteIP); ip != nil {
+		form.Set("remoteip", ip.String())
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.turnstileVerifyURL(), strings.NewReader(form.Encode()))
+	if err != nil {
+		return errTurnstileUnavailable
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	client := s.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		s.log.Warn("turnstile verify request", "error", err, "ip", remoteIP)
+		return errTurnstileUnavailable
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		s.log.Warn("turnstile verify status", "status", resp.StatusCode, "ip", remoteIP)
+		return errTurnstileUnavailable
+	}
+	var result struct {
+		Success    bool     `json:"success"`
+		Action     string   `json:"action"`
+		Hostname   string   `json:"hostname"`
+		ErrorCodes []string `json:"error-codes"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&result); err != nil {
+		s.log.Warn("turnstile verify response", "error", err, "ip", remoteIP)
+		return errTurnstileUnavailable
+	}
+	if !result.Success || result.Action != turnstileAction {
+		s.log.Warn("turnstile rejected", "codes", result.ErrorCodes, "action", result.Action,
+			"hostname", result.Hostname, "ip", remoteIP)
+		return errTurnstileRejected
+	}
+	return nil
+}
 
 func (s *server) createSession(r *http.Request) (*session, error) {
 	ip := clientIP(r)
 	now := time.Now().UTC()
 
 	s.mu.Lock()
-	s.pruneCreatesLocked(now)
+	s.pruneLimitsLocked(now)
 	if len(s.sessions)+s.creating >= s.cfg.MaxSessions {
 		s.mu.Unlock()
 		return nil, errTooMany
@@ -540,7 +685,7 @@ func (s *server) cleanupLoop(ctx context.Context) {
 		case now := <-ticker.C:
 			var expired []*session
 			s.mu.Lock()
-			s.pruneCreatesLocked(now)
+			s.pruneLimitsLocked(now)
 			for id, sess := range s.sessions {
 				if now.After(sess.Expires) {
 					expired = append(expired, sess)
@@ -558,19 +703,21 @@ func (s *server) cleanupLoop(ctx context.Context) {
 	}
 }
 
-func (s *server) pruneCreatesLocked(now time.Time) {
+func (s *server) pruneLimitsLocked(now time.Time) {
 	cutoff := now.Add(-time.Hour)
-	for ip, times := range s.creates {
-		kept := times[:0]
-		for _, t := range times {
-			if t.After(cutoff) {
-				kept = append(kept, t)
+	for _, bucket := range []map[string][]time.Time{s.creates, s.verifies} {
+		for ip, times := range bucket {
+			kept := times[:0]
+			for _, t := range times {
+				if t.After(cutoff) {
+					kept = append(kept, t)
+				}
 			}
-		}
-		if len(kept) == 0 {
-			delete(s.creates, ip)
-		} else {
-			s.creates[ip] = kept
+			if len(kept) == 0 {
+				delete(bucket, ip)
+			} else {
+				bucket[ip] = kept
+			}
 		}
 	}
 }
@@ -612,6 +759,12 @@ func (s *server) cleanupAll() {
 }
 
 func clientIP(r *http.Request) string {
+	// nginx sets X-Real-IP to the direct peer. Prefer it over the
+	// client-supplied X-Forwarded-For chain so rate limits and Turnstile see
+	// the real address.
+	if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
+		return real
+	}
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		if first, _, ok := strings.Cut(xff, ","); ok {
 			return strings.TrimSpace(first)

@@ -8,6 +8,8 @@ DEMO_HOST="${DEMO_HOST:-tryperch.mxraven.com}"
 MAIL_HOST="${MAIL_HOST:-mail.tryperch.mxraven.com}"
 ACCOUNT_DOMAIN="${ACCOUNT_DOMAIN:-tryperch.mxraven.com}"
 PUBLIC_IP="${PUBLIC_IP:-}"
+TURNSTILE_SITE_KEY="${TURNSTILE_SITE_KEY:-}"
+TURNSTILE_SECRET_KEY="${TURNSTILE_SECRET_KEY:-}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-/opt/perch-demo/artifacts}"
 INSTALL_DIR=/opt/perch-demo
 DATA_DIR=/var/lib/perch-demo
@@ -149,7 +151,10 @@ NGINX
 
 cat > "$CONFIG_DIR/previewd.env" <<ENV
 PREVIEWD_FLAGS=-listen 127.0.0.1:8080 -perch-config $CONFIG_DIR/perch.yaml -perch-bin /usr/local/bin/perch -domain $ACCOUNT_DOMAIN -mail-host $MAIL_HOST -imap-port 993 -smtp-port 465 -ttl 15m -max-sessions 50 -terminal-image perch-demo-terminal:latest -docker-network perch-demo-internal -proxy-ip 172.31.240.2 -state-dir $DATA_DIR -docker-bin /usr/bin/docker -secure-cookie=true
+TURNSTILE_SITE_KEY=$TURNSTILE_SITE_KEY
+TURNSTILE_SECRET_KEY=$TURNSTILE_SECRET_KEY
 ENV
+chmod 0600 "$CONFIG_DIR/previewd.env"
 
 cat > /etc/systemd/system/perch-demo.service <<UNIT
 [Unit]

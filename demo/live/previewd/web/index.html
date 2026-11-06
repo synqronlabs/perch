@@ -75,6 +75,13 @@ pre{margin:0 0 8px;padding:10px;border:1px solid var(--theme-line);border-radius
 .hint{margin:18px 0 0;color:var(--theme-muted);font-size:12px;line-height:1.5}
 .drawer-tab{position:fixed;right:0;top:50%;z-index:20;transform:translateY(-50%);border-right:0;border-radius:var(--radius) 0 0 var(--radius);writing-mode:vertical-rl;text-orientation:mixed;padding:12px 7px;letter-spacing:.1em}
 body.drawer-open .drawer-tab{display:none}
+.gate{position:fixed;inset:0;z-index:30;display:none;place-items:center;padding:20px;background:color-mix(in srgb,var(--theme-canvas) 88%,transparent);backdrop-filter:blur(3px)}
+.gate[data-active]{display:grid}
+.gate-card{display:grid;justify-items:center;gap:14px;max-width:340px;padding:24px;border:1px solid var(--theme-line);border-radius:var(--radius);background:var(--theme-surface);text-align:center}
+.gate-title{font-size:15px;font-weight:600;letter-spacing:-.02em}
+.gate-card p{margin:0;color:var(--theme-muted);font-size:12px;line-height:1.5}
+.gate-card button{display:none}
+.gate-card[data-error] button{display:inline-block}
 @media (max-width:720px){
   .top{gap:12px;padding:0 10px}
   .drawer{position:fixed;top:var(--top-height);right:0;bottom:0;z-index:20;width:0}
@@ -84,6 +91,14 @@ body.drawer-open .drawer-tab{display:none}
 </style>
 </head>
 <body class="drawer-open">
+<div class="gate" id="gate" aria-live="polite">
+  <div class="gate-card" id="gate-card">
+    <span class="gate-title">perch demo</span>
+    <p id="gate-status">Checking your browser…</p>
+    <div id="turnstile"></div>
+    <button id="gate-retry" type="button">retry</button>
+  </div>
+</div>
 <header class="top">
   <span class="brand">perch demo</span>
   <div class="identity">
@@ -148,25 +163,113 @@ body.drawer-open .drawer-tab{display:none}
 </aside>
 </main><script src="/assets/xterm.js"></script>
 <script src="/assets/addon-fit.js"></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 <script>
 const $ = (id) => document.getElementById(id);
-const state = { session: null, term: null, fit: null, ws: null, timer: null, snippet: '', expired: false, generation: 0, inputBuffer: '' };
+const state = { session: null, term: null, fit: null, ws: null, timer: null, snippet: '', expired: false, generation: 0, inputBuffer: '', config: {}, widgetId: null };
 
 function set(id, value) { $(id).textContent = value; }
 function fail(message) { $('status').textContent = message; }
 
+function showGate(message) {
+  $('gate-status').textContent = message;
+  $('gate').setAttribute('data-active', '');
+}
+
+function hideGate() { $('gate').removeAttribute('data-active'); }
+
+function gateError(message) {
+  $('gate-status').textContent = message;
+  $('gate-card').setAttribute('data-error', '');
+}
+
+function clearGateError() { $('gate-card').removeAttribute('data-error'); }
+
+function waitForTurnstile(timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    (function poll() {
+      if (window.turnstile) return resolve(window.turnstile);
+      if (Date.now() - start > timeoutMs) return reject(new Error('turnstile unavailable'));
+      setTimeout(poll, 100);
+    })();
+  });
+}
+
+async function requestToken() {
+  try {
+    await waitForTurnstile(15000);
+  } catch (_) {
+    return '';
+  }
+  if (state.widgetId !== null) {
+    try { window.turnstile.remove(state.widgetId); } catch (_) {}
+    state.widgetId = null;
+    $('turnstile').innerHTML = '';
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (token) => { if (!settled) { settled = true; resolve(token); } };
+    try {
+      state.widgetId = window.turnstile.render($('turnstile'), {
+        sitekey: state.config.turnstile_site_key,
+        action: 'demo_session',
+        appearance: 'interaction-only',
+        theme: 'auto',
+        callback: finish,
+        'error-callback': () => { finish(''); return false; },
+        'timeout-callback': () => finish(''),
+      });
+    } catch (_) {
+      finish('');
+    }
+  });
+}
+
 async function boot() {
+  clearGateError();
   try {
     let res = await fetch('/api/session', { credentials: 'same-origin' });
+    let required = false;
     if (res.status === 404) {
-      res = await fetch('/api/session', { method: 'POST', credentials: 'same-origin' });
+      try {
+        const configRes = await fetch('/api/config', { credentials: 'same-origin' });
+        state.config = configRes.ok ? await configRes.json() : {};
+      } catch (_) {
+        state.config = {};
+      }
+      required = Boolean(state.config.turnstile_site_key);
+      let token = '';
+      if (required) {
+        showGate('Checking your browser…');
+        token = await requestToken();
+        if (!token) {
+          gateError('verification did not complete. try again.');
+          return;
+        }
+        showGate('Starting your demo…');
+      }
+      res = await fetch('/api/session', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(required ? { turnstile_token: token } : {}),
+      });
     }
     if (!res.ok) {
-      fail((await res.text()).trim() || 'demo unavailable');
+      const message = (await res.text()).trim() || 'demo unavailable';
+      if (required) {
+        gateError(message);
+        return;
+      }
+      hideGate();
+      fail(message);
       return;
     }
+    hideGate();
     apply(await res.json());
   } catch (_) {
+    hideGate();
     fail('demo unavailable');
   }
 }
@@ -365,6 +468,7 @@ document.querySelectorAll('[data-paste]').forEach((btn) => {
 
 $('drawer-toggle').addEventListener('click', openDrawer);
 $('drawer-close').addEventListener('click', closeDrawer);
+$('gate-retry').addEventListener('click', boot);
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeDrawer(); });
 window.addEventListener('resize', fitTerminal);
 boot();
