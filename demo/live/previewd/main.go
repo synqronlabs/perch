@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -29,7 +30,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-//go:embed web/index.html
+//go:embed web/*
 var webFiles embed.FS
 
 type config struct {
@@ -134,7 +135,14 @@ func main() {
 	srv.cleanupStartup(ctx)
 	go srv.cleanupLoop(ctx)
 
+	webRoot, err := fs.Sub(webFiles, "web")
+	if err != nil {
+		log.Error("prepare web assets", "error", err)
+		os.Exit(1)
+	}
+
 	mux := http.NewServeMux()
+	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(webRoot))))
 	mux.HandleFunc("/", srv.handleIndex)
 	mux.HandleFunc("/api/session", srv.handleSession)
 	mux.HandleFunc("/ws", srv.handleTerminal)
