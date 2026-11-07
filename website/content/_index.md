@@ -89,11 +89,12 @@ description: A single-binary IMAP and SMTP server with a POSIX CLI, by mxRaven.
     <div class="agent-copy">
       <h2>Give your agent a real inbox.</h2>
       <p>
-        No browser sessions, no scraping, no vendor-specific mailbox API. Your
-        agent gets normal email plus a clean command-line interface designed for
-        scripts and tool calls.
+        No browser sessions, no scraping, no vendor-specific mailbox API. Install
+        the bundled Agent Skill, and your agent gets normal email plus a clean
+        command-line interface designed for scripts and tool calls.
       </p>
       <ul class="checks">
+        <li>Install the Agent Skill for Pi, Hermes Agent, and other harnesses</li>
         <li>Search and list messages as NDJSON for structured context</li>
         <li>Fetch raw .eml for RAG, summarization, or archival</li>
         <li>Send replies and attachments with one command</li>
@@ -104,7 +105,11 @@ description: A single-binary IMAP and SMTP server with a POSIX CLI, by mxRaven.
     </div>
     <div class="terminal" aria-label="Example agent mail commands">
       <div class="terminal-bar" aria-hidden="true"><span></span><span></span><span></span></div>
-      <pre><code><span class="comment"># Give the agent structured context</span>
+      <pre><code><span class="comment"># Install the agent skill</span>
+<span class="prompt">$</span> npx skills add https://github.com/synqronlabs/perch \
+    --skill perch
+<br>
+<span class="comment"># Give the agent structured context</span>
 <span class="prompt">$</span> perch mail search -q 'unseen from:alice' --json
 <br>
 <span class="comment"># Fetch the full message</span>
