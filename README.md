@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="logo.svg" width="72" height="72" alt="perch by mxRaven">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="logo-white.svg">
+    <img src="logo.svg" width="70" height="55" alt="perch by mxRaven">
+  </picture>
 </p>
 
 # perch by mxRaven

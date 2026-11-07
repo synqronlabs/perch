@@ -43,6 +43,29 @@ The site uses the same visual language as mxRaven's website and dashboard:
 header and footer. `layouts/_partials/docs/page-head.html` adds the breadcrumb,
 page title, and description that Book does not render by default.
 
+## Brand assets
+
+The same mark is used everywhere:
+
+- `logo.svg` (dark) and `logo-white.svg` (white) are the source logos at the
+  repository root and under `website/static/`. The README uses `<picture>` to
+  switch between them with the color scheme.
+- `website/layouts/_partials/site/logo.html` renders the mark inline with
+  `fill="currentColor"` for the site header and footer, so it follows the
+  active theme.
+- `website/static/favicon.svg` is the square, transparent-background favicon.
+  It switches to the white mark under `prefers-color-scheme: dark`;
+  `favicon-white.svg` is an explicit white variant.
+- `website/static/favicon.ico`, the PNG sizes, `apple-touch-icon.png`, and the
+  maskable icon are generated from `favicon.svg`. Rebuild them after changing
+  the mark:
+
+  ```sh
+  make favicons
+  ```
+
+`website/assets/manifest.json` lists the install icons and brand colors.
+
 ## Generated content
 
 Do not edit these by hand:

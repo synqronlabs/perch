@@ -1,0 +1,40 @@
+{
+  "name": "{{ .Site.Title }}",
+  "short_name": "{{ .Site.Title }}",
+  "start_url": "{{ "./" | relURL }}",
+  "scope": "{{ "./" | relURL }}",
+  "display": "standalone",
+  "background_color": "#f8f9fa",
+  "theme_color": "#24211d",
+  "icons": [
+    {
+      "src": "{{ "favicon-192x192.png" | relURL }}",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "{{ "favicon-512x512.png" | relURL }}",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "{{ "favicon-maskable-512x512.png" | relURL }}",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "{{ "favicon.svg" | relURL }}",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "{{ "favicon-white.svg" | relURL }}",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "monochrome"
+    }
+  ]
+}

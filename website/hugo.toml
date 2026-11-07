@@ -15,7 +15,7 @@ disablePathToLower = true
 
 [params]
   BookSection = 'docs'
-  BookFavicon = 'favicon.svg'
+  BookFavicon = 'favicon.ico'
   BookSearch = true
   BookToC = true
   BookBreadcrumbs = true

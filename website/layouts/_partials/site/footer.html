@@ -1,7 +1,10 @@
 <footer class="site-footer">
   <div class="site-footer__grid">
     <div class="site-footer__brand">
-      <a class="site-footer__wordmark" href="{{ .Site.Home.RelPermalink }}">perch</a>
+      <a class="site-footer__wordmark" href="{{ .Site.Home.RelPermalink }}">
+        {{ partial "site/logo" (dict "class" "site-footer__logo") }}
+        <span>perch</span>
+      </a>
       <p class="site-footer__tagline">A single-binary IMAP + SMTP server with a POSIX CLI.</p>
       <a class="site-footer__cta" href="{{ "docs/getting-started/installation/" | relURL }}">Get started →</a>
     </div>

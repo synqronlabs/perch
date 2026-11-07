@@ -91,6 +91,11 @@ archives:
           owner: root
           group: root
           mtime: "{{ .CommitDate }}"
+      - src: logo-white.svg
+        info:
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
       - src: man/*.1
         dst: man
         info:

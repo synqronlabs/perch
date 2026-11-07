@@ -227,12 +227,8 @@ a.site-wordmark:hover {
 
 .site-wordmark svg {
   width: 1.75rem;
-  height: 1.75rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 4;
+  height: auto;
+  fill: currentColor;
 }
 
 .site-byline {
@@ -382,11 +378,20 @@ a.site-wordmark:hover {
 .site-footer__wordmark,
 a.site-footer__wordmark,
 a.site-footer__wordmark:visited {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   color: var(--theme-foreground);
   font-size: 1.0625rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   text-decoration: none;
+}
+
+.site-footer__wordmark svg {
+  width: 1.25rem;
+  height: auto;
+  fill: currentColor;
 }
 
 a.site-footer__wordmark:hover {

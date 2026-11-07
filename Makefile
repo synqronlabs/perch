@@ -1,4 +1,4 @@
-.PHONY: build test race vet lint tidy clean snapshot release-check docs website docs-check skill-check
+.PHONY: build test race vet lint tidy clean snapshot release-check docs website docs-check skill-check favicons
 
 
 # Release builds override this via -ldflags in GoReleaser.
@@ -38,6 +38,10 @@ docs-check: docs
 		echo "generated docs are stale; run make docs and commit the result" >&2; \
 		exit 1; \
 	}
+
+# Regenerate the favicon set from website/static/favicon.svg.
+favicons:
+	./website/scripts/generate-favicons.sh
 
 # Validate the shipped Agent Skill without requiring Node or network access.
 skill-check:
