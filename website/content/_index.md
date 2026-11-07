@@ -94,7 +94,7 @@ description: A single-binary IMAP and SMTP server with a POSIX CLI, by mxRaven.
         command-line interface designed for scripts and tool calls.
       </p>
       <ul class="checks">
-        <li>Install the Agent Skill for Pi, Hermes Agent, and other harnesses</li>
+        <li>Install the Skill your harness</li>
         <li>Search and list messages as NDJSON for structured context</li>
         <li>Fetch raw .eml for RAG, summarization, or archival</li>
         <li>Send replies and attachments with one command</li>
