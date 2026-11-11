@@ -26,6 +26,12 @@ or bucket.
 workspace. mxRaven's free plan includes one workspace with 1,000 inbound and
 1,000 outbound emails a month, with no card required.*
 
+<p align="center">
+  <a href="https://asciinema.org/a/1270686" target="_blank">
+    <img src="website/static/asciinema/1270686.svg" alt="Terminal recording showing perch provisioning, receiving, and searching mail" />
+  </a>
+</p>
+
 ## Use it as
 
 - **A personal mailbox.** Point any standard mail client at it and keep the data on your hardware.

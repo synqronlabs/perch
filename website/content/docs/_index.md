@@ -14,6 +14,15 @@ Start with [Installation](getting-started/installation.md) and the
 [CLI reference](cli/_index.md) for command details. For agent and application
 patterns, see [Agents and applications](mail/agents.md).
 
+## See perch in action
+
+{{< asciinema
+  cast="asciinema/1270686.cast"
+  autoplay=true
+  loop=true
+  idleTimeLimit=2
+>}}
+
 Coding-agent harnesses can install the bundled Agent Skill directly:
 
 ```sh
