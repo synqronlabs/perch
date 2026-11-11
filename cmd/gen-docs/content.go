@@ -256,15 +256,16 @@ var commandDocs = map[string]commandDoc{
 		},
 	},
 	"perch mail list": {
-		Summary: "list mailboxes",
+		Summary: "list mailboxes (folders)",
 		Paragraphs: []string{
 			"List mailboxes on the selected IMAP server. The default output is a table; --json writes one JSON object per line.",
 		},
 		Examples: []string{
 			"perch mail list --server 127.0.0.1:1143 --plaintext --username you@example.com",
-			"perch mail list --server imaps://mail.example.com --username you@example.com --json",
+			"perch mail folders --server imaps://mail.example.com --username you@example.com --json",
 		},
 		Notes: []string{
+			"This lists mailboxes (folders), not messages. Use `perch mail search` to list or search messages.",
 			"--subscribed requires server support for LIST-EXTENDED.",
 		},
 		Environment: []string{

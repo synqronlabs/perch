@@ -27,8 +27,15 @@ perch mail search [connection flags] [--mailbox INBOX] [--query EXPR] [--uids SE
 perch mail fetch  [connection flags] [--mailbox INBOX] [--query EXPR] [--uids SET] [--all]
 perch mail send   [smtp flags] --to ADDR [--subject SUBJECT] [--body TEXT] [--attach FILE]
 perch mail caps   [smtp flags]`,
-		Action: commandUsage("usage: perch mail list|search|fetch|send|caps"),
-		Flags:  mailCommonFlags(),
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			if name := cmd.Args().First(); name != "" {
+				return unknownCommandError(cmd, name)
+			}
+			return cli.Exit("usage: perch mail list|search|fetch|send|caps", 1)
+		},
+		Suggest:      true,
+		OnUsageError: commandUsageError,
+		Flags:        mailCommonFlags(),
 		Commands: []*cli.Command{
 			mailListCommand(),
 			mailSearchCommand(),
@@ -67,8 +74,8 @@ func imapConnectionFlags() []cli.Flag {
 func mailListCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "list",
-		Aliases: []string{"ls"},
-		Usage:   "list mailboxes",
+		Aliases: []string{"ls", "mailboxes", "folders"},
+		Usage:   "list mailboxes (folders), not messages",
 		Flags: append([]cli.Flag{
 			&cli.BoolFlag{Name: "json", Usage: "write one JSON object per mailbox"},
 			&cli.BoolFlag{Name: "subscribed", Usage: "only list subscribed mailboxes"},

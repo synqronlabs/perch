@@ -7,7 +7,27 @@ description: A single-binary IMAP and SMTP server with a POSIX CLI, by mxRaven.
 <section class="hero">
   <div class="landing-wrap">
     <h1 class="hero-title" aria-label="Open source inbox for you, your agent, or your app">
-      <span class="hero-title__lead" aria-hidden="true">Open source inbox for</span>
+      <span class="hero-title__lead">
+        <span class="hero-title__opensource">
+          <span aria-hidden="true">Open source</span><span class="hero-tip">
+            <button
+              class="hero-tip__trigger"
+              type="button"
+              aria-label="About open source and mxRaven"
+              aria-describedby="hero-open-source-note"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>
+            </button>
+            <span class="hero-tip__bubble" id="hero-open-source-note" role="tooltip">
+              perch is open source under MIT-0, but it requires an
+              <a href="https://mxraven.com">mxRaven</a> workspace to handle the
+              public edge. mxRaven's free plan includes one workspace with 1,000
+              inbound and 1,000 outbound emails a month, with no card required.
+            </span>
+          </span>
+        </span>
+        <span aria-hidden="true">inbox for</span>
+      </span>
       <span class="hero-title__rotator" aria-hidden="true">
         <span class="hero-title__word" data-state="active">you</span>
         <span class="hero-title__word">your agent</span>

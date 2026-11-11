@@ -40,7 +40,7 @@ Credentials and TLS flags are shared. IMAP flags are local to list/search/fetch;
 
 | Command | Description |
 | --- | --- |
-| [perch mail list](perch-mail-list.md) | list mailboxes |
+| [perch mail list](perch-mail-list.md) | list mailboxes (folders), not messages |
 | [perch mail search](perch-mail-search.md) | search message metadata |
 | [perch mail fetch](perch-mail-fetch.md) | fetch raw messages |
 | [perch mail send](perch-mail-send.md) | compose and send a message |

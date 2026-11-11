@@ -71,22 +71,24 @@ func RootCommand() *cli.Command {
 
 func newRootCommand() *cli.Command {
 	return &cli.Command{
-		Name:      "perch",
-		Usage:     "a small IMAP mailbox service backed by mxRaven",
-		Version:   version(),
-		Writer:    os.Stderr,
-		ErrWriter: os.Stderr,
+		Name:         "perch",
+		Usage:        "a small IMAP mailbox service backed by mxRaven",
+		Version:      version(),
+		Writer:       os.Stderr,
+		ErrWriter:    os.Stderr,
+		Suggest:      true,
+		OnUsageError: commandUsageError,
 		ExitErrHandler: func(context.Context, *cli.Command, error) {
 			// Run maps errors to process exit codes itself so urfave/cli does
 			// not call os.Exit inside tests or embedders.
 		},
 		CommandNotFound: func(_ context.Context, cmd *cli.Command, name string) {
-			_, _ = fmt.Fprintf(cmd.Root().ErrWriter, "unknown command %q\n\n", name)
+			_, _ = fmt.Fprintf(cmd.Root().ErrWriter, "%s\n\n", unknownCommandError(cmd, name))
 			_ = cli.ShowRootCommandHelp(cmd)
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			if cmd.Args().Len() > 0 {
-				_, _ = fmt.Fprintf(cmd.Root().ErrWriter, "unknown command %q\n\n", cmd.Args().First())
+			if name := cmd.Args().First(); name != "" {
+				_, _ = fmt.Fprintf(cmd.Root().ErrWriter, "%s\n\n", unknownCommandError(cmd, name))
 			}
 			_ = cli.ShowRootCommandHelp(cmd)
 			return cli.Exit("", 2)

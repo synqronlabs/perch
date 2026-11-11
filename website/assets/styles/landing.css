@@ -62,6 +62,10 @@
   display: block;
 }
 
+.hero-title__opensource {
+  white-space: nowrap;
+}
+
 .hero-title__rotator {
   display: inline-grid;
   overflow: hidden;
@@ -94,6 +98,104 @@
 .hero-title__word[data-state="active"] {
   opacity: 1;
   transform: translateY(0);
+}
+
+.hero-tip {
+  position: relative;
+  display: inline-flex;
+  margin-left: 0.25em;
+  vertical-align: super;
+  font-size: clamp(0.75rem, 0.28em, 1.05rem);
+  line-height: 1;
+}
+
+.hero-tip__trigger {
+  position: relative;
+  top: -0.35em;
+  display: inline-grid;
+  place-items: center;
+  width: 1.6em;
+  height: 1.6em;
+  padding: 0;
+  border: 1px solid var(--theme-line);
+  border-radius: 50%;
+  background: var(--theme-surface);
+  color: var(--theme-muted);
+  cursor: help;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.hero-tip__trigger:hover,
+.hero-tip__trigger:focus-visible {
+  border-color: var(--theme-brand);
+  color: var(--theme-brand);
+}
+
+.hero-tip__trigger svg {
+  width: 1em;
+  height: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.hero-tip__bubble {
+  position: absolute;
+  top: calc(100% + 0.85rem);
+  left: 50%;
+  z-index: 20;
+  width: min(21rem, calc(100vw - 2rem));
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--theme-line);
+  border-radius: var(--radius);
+  background: var(--theme-surface);
+  box-shadow: var(--shadow-panel);
+  color: var(--theme-muted);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: normal;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, 0.25rem);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease,
+    visibility 150ms ease;
+}
+
+.hero-tip__bubble::before {
+  content: "";
+  position: absolute;
+  top: -0.35rem;
+  left: 50%;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-top: 1px solid var(--theme-line);
+  border-left: 1px solid var(--theme-line);
+  background: var(--theme-surface);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.hero-tip__bubble a {
+  color: var(--theme-brand);
+}
+
+.hero-tip:hover .hero-tip__bubble,
+.hero-tip:focus-within .hero-tip__bubble {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
 }
 
 .hero-actions {

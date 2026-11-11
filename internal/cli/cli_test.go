@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	cli "github.com/urfave/cli/v3"
 )
 
 func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
@@ -74,6 +76,62 @@ func TestVersionOutput(t *testing.T) {
 	}
 	if want := "perch " + version() + "\n"; out != want {
 		t.Fatalf("output = %q, want %q", out, want)
+	}
+}
+
+func TestUnknownMailCommandSuggestsSearch(t *testing.T) {
+	var code int
+	_, errOut := captureOutput(t, func() {
+		code = Run([]string{"mail", "serch", "-q", "all"})
+	})
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	for _, want := range []string{
+		`Did you mean "search"?`,
+		`unknown command "serch"; did you mean "search"?`,
+	} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("stderr does not contain %q:\n%s", want, errOut)
+		}
+	}
+}
+
+func TestUnknownRootCommandSuggestsMail(t *testing.T) {
+	var code int
+	_, errOut := captureOutput(t, func() {
+		code = Run([]string{"mial", "list"})
+	})
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	if !strings.Contains(errOut, `did you mean "mail"?`) {
+		t.Fatalf("stderr does not suggest mail:\n%s", errOut)
+	}
+}
+
+func TestSuggestSubcommand(t *testing.T) {
+	commands := []*cli.Command{
+		{Name: "list", Aliases: []string{"ls"}},
+		{Name: "search", Aliases: []string{"find"}},
+		{Name: "fetch"},
+		{Name: "send"},
+		{Name: "caps"},
+	}
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"serch", "search"},
+		{"lsit", "list"},
+		{"lst", "list"},
+		{"fnd", "search"},
+		{"bogus", ""},
+	}
+	for _, tc := range tests {
+		if got := suggestSubcommand(commands, tc.input); got != tc.want {
+			t.Errorf("suggestSubcommand(%q) = %q, want %q", tc.input, got, tc.want)
+		}
 	}
 }
 

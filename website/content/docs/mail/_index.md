@@ -16,6 +16,9 @@ The command reference is generated from the installed command tree:
 - [`perch mail send`](../cli/perch-mail-send.md)
 - [`perch mail caps`](../cli/perch-mail-caps.md)
 
+`perch mail list` lists mailboxes (folders), not messages. Use
+`perch mail search` to list or search messages.
+
 For agent and application patterns, see
 [Agents and applications](agents.md). If you are wiring a coding agent into a
 mailbox, the repository also ships an Agent Skill that installs with

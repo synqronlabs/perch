@@ -73,6 +73,11 @@ pre{margin:0 0 8px;padding:10px;border:1px solid var(--theme-line);border-radius
 .cmd{display:grid;gap:6px;margin-bottom:12px}
 .cmd button{justify-self:start;color:var(--theme-brand)}
 .hint{margin:18px 0 0;color:var(--theme-muted);font-size:12px;line-height:1.5}
+.own{margin-top:16px;padding-top:16px;border-top:1px solid var(--theme-line)}
+.own .label{margin-top:0}
+.own-links{display:flex;flex-wrap:wrap;gap:8px;margin:0;color:var(--theme-muted);font-size:12px}
+.own-links a,.hint a{color:var(--theme-brand);text-decoration:none}
+.own-links a:hover,.hint a:hover{text-decoration:underline}
 .drawer-tab{position:fixed;right:0;top:50%;z-index:20;transform:translateY(-50%);border-right:0;border-radius:var(--radius) 0 0 var(--radius);writing-mode:vertical-rl;text-orientation:mixed;padding:12px 7px;letter-spacing:.1em}
 body.drawer-open .drawer-tab{display:none}
 .gate{position:fixed;inset:0;z-index:30;display:none;place-items:center;padding:20px;background:color-mix(in srgb,var(--theme-canvas) 88%,transparent);backdrop-filter:blur(3px)}
@@ -138,8 +143,8 @@ body.drawer-open .drawer-tab{display:none}
       <button type="button" data-paste="perch mail send --to &quot;$PERCH_IMAP_USER&quot; --subject 'hello from perch' --body 'hello from the demo'">paste in terminal</button>
     </div>
     <div class="cmd">
-      <pre>perch mail list</pre>
-      <button type="button" data-paste="perch mail list">paste in terminal</button>
+      <pre>perch mail search -q all</pre>
+      <button type="button" data-paste="perch mail search -q all">paste in terminal</button>
     </div>
     <div class="cmd">
       <pre>perch mail search -q all --json</pre>
@@ -159,6 +164,16 @@ body.drawer-open .drawer-tab{display:none}
     </div>
 
     <p class="hint">Outbound is limited to other @tryperch.mxraven.com addresses. Expires in <span id="expires">…</span>.</p>
+
+    <div class="own">
+      <p class="label">run your own</p>
+      <pre>go install github.com/synqronlabs/perch/cmd/perch@latest</pre>
+      <p class="own-links">
+        <a href="https://perch.mxraven.com/docs/getting-started/quickstart/" target="_blank" rel="noopener noreferrer">Quickstart</a>
+        <span aria-hidden="true">·</span>
+        <a href="https://github.com/synqronlabs/perch" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </p>
+    </div>
   </div>
 </aside>
 </main><script src="/assets/xterm.js"></script>
@@ -282,7 +297,7 @@ function apply(data) {
   set('drawer-password', data.password);
   set('imap', `${data.imap_host}:${data.imap_port} · tls`);
   set('smtp', `${data.smtp_host}:${data.smtp_port} · tls`);
-  state.snippet = `export PERCH_IMAP_USER='${data.address}'\nexport PERCH_IMAP_PASSWORD='${data.password}'\n\nperch mail list --server imaps://${data.imap_host}:${data.imap_port}\n\nperch mail send \\\n  --to "$PERCH_IMAP_USER" \\\n  --subject 'hello from perch' \\\n  --body 'This only goes to the demo domain.' \\\n  --smtp-server smtps://${data.smtp_host}:${data.smtp_port}`;
+  state.snippet = `export PERCH_IMAP_USER='${data.address}'\nexport PERCH_IMAP_PASSWORD='${data.password}'\n\nperch mail search -q all --server imaps://${data.imap_host}:${data.imap_port}\n\nperch mail send \\\n  --to "$PERCH_IMAP_USER" \\\n  --subject 'hello from perch' \\\n  --body 'This only goes to the demo domain.' \\\n  --smtp-server smtps://${data.smtp_host}:${data.smtp_port}`;
   $('local-snippet').textContent = state.snippet;
   updateExpiry();
   clearInterval(state.timer);

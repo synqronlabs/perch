@@ -22,6 +22,10 @@ public IP, port forwarding.
 filtering so perch can stay inside your network. Your mail stays on your disk
 or bucket.
 
+*perch is open source under MIT-0, but the public edge requires an mxRaven
+workspace. mxRaven's free plan includes one workspace with 1,000 inbound and
+1,000 outbound emails a month, with no card required.*
+
 ## Use it as
 
 - **A personal mailbox.** Point any standard mail client at it and keep the data on your hardware.
