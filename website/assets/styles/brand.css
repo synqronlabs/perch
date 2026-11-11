@@ -111,8 +111,17 @@
   color-scheme: light;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+:root[data-theme$="-dark"] {
   color-scheme: dark;
+  --icon-filter: brightness(0) invert(1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"],
+  :root[data-theme$="-auto"] {
+    --icon-filter: brightness(0) invert(1);
+  }
 }
 
 html {
