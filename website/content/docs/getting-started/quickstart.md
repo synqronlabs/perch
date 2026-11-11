@@ -3,8 +3,9 @@ title: Quickstart
 weight: 20
 ---
 
-perch has two setup paths. Try it locally without mxRaven, or connect an
-mxRaven workspace to receive and send real mail.
+perch works in three ways: run it locally without mxRaven, connect an mxRaven
+workspace to receive and send real mail, or use only the `perch mail` CLI
+against an existing IMAP/SMTP server.
 
 ## Try locally, no mxRaven needed
 
@@ -29,6 +30,28 @@ commands. It does not receive mail from the internet or relay outbound mail;
 use the mxRaven path below for that.
 
 Then [connect a mail client](#connect-a-mail-client).
+
+## Use an existing IMAP/SMTP server
+
+The `perch mail` client does not require `perch serve` or mxRaven. Point it at
+any standard IMAP and SMTP submission server:
+
+```sh
+perch mail search \
+  --server imaps://mail.example.com \
+  --username you@example.com \
+  -q 'unseen' --json
+
+perch mail send \
+  --smtp-server smtps://smtp.example.com \
+  --from you@example.com \
+  --to alice@example.com \
+  --subject 'Hello' --body 'Hi Alice'
+```
+
+Use `--starttls` for IMAP STARTTLS, or `--smtp-starttls` and
+`--smtp-implicit-tls` for SMTP. See [Mail client](../mail/_index.md) for all
+connection and credential flags.
 
 ## Receive real mail with mxRaven
 
